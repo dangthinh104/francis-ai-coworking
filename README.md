@@ -8,6 +8,8 @@ The kit is built on spec-driven development:
 - Only a person approves a spec.
 - A feature moves through `Draft → Approved → Built → Released → Closed`. Once closed, it is merged into a living spec of what the system does today.
 
+What changed in each version, and what can turn a gate red when you move to it: [`CHANGELOG.md`](CHANGELOG.md).
+
 The kit grew out of four real projects, and each rule in it comes from a mistake an agent made in one of them.
 
 It relies on three things it does not ship:

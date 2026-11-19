@@ -1,4 +1,5 @@
 """tools/export_public.py: the public copy names no project and no private repository."""
+import json
 import re
 import subprocess
 import sys
@@ -17,7 +18,10 @@ def test_the_public_copy_holds_no_forbidden_word(tmp_path):
     assert run.returncode == 0, run.stdout + run.stderr
     assert '0 forbidden word(s) left' in run.stdout
     assert (out / 'LICENSE').is_file() and (out / 'README.md').is_file()
-    assert not (out / 'specs').exists() and not (out / 'CHANGELOG.md').exists() and not (out / 'evals').exists()
+    assert not (out / 'specs').exists() and not (out / 'evals').exists()
+    version = json.loads((out / 'plugins/francis-kit/.claude-plugin/plugin.json').read_text(encoding='utf-8'))['version']
+    changelog = (out / 'CHANGELOG.md').read_text(encoding='utf-8')
+    assert f'\n## {version}\n' in changelog, 'the public CHANGELOG has a heading for the plugin version'
     gate = (out / 'plugins/francis-kit/skills/kit-init/templates/common/kit-gate.yml').read_text(encoding='utf-8')
     assert 'repository: dangthinh104/francis-ai-coworking' in gate
     assert 'KIT_READ_TOKEN' not in gate and 'secrets.' not in gate
