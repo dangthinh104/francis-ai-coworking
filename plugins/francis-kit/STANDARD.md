@@ -40,6 +40,7 @@ docs/diagrams/map.refs.json          anchored citations for the map
 **Branches.** Nothing is committed on, or pushed to, a branch listed in `release.deploy_branches`; work reaches it through a pull request to `release.pr_target`. Where that target is itself a deploy branch, merging is releasing, and the merge is the owner's. Skills and agents repeat the first half as a reminder; this paragraph is the rule.
 
 Requirement ids (`FR-001`, `SC-001`) are numbered per feature. Outside its own spec a requirement is cited as `NNN/FR-001`.
+A line declares its first id only when a marker stands before it: a list marker (`- `, `* `, `1. `), a heading marker (`#` to `######`), a table bar (`|`) or `**` at the start of the line, with blanks or `**` allowed between the marker and the id. A line with no marker before the id, a paragraph or a continuation line that opens with it, declares nothing.
 
 ### Citing a requirement
 

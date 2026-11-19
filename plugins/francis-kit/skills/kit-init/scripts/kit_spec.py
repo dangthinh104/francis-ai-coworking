@@ -57,8 +57,10 @@ FENCE = _Fences()
 COMMENT = re.compile(r'<!--.*?-->', re.S)
 CODE_SPAN = re.compile(r'`[^`\n]*`')
 ID = r'(?:FR|SC)-[A-Z]?\d+(?:\.\d+)*'
+# A line declares its first id only when a marker stands before it: a list or heading marker, a
+# table bar, or `**` at the start. A paragraph that opens with an id recalls it (024/FR-001).
 DEFINITION = re.compile(
-    rf'^[ \t]*(?:#+[ \t]*|[-*][ \t]+|\d+\.[ \t]+|\|[ \t]*)?\**[ \t]*({ID})(?![\w.-]*\d)', re.M)
+    rf'^[ \t]*(?:(?:#{{1,6}}[ \t]*|[-*][ \t]+|\d+\.[ \t]+|\|[ \t]*)\**|\*\*+)[ \t]*({ID})(?![\w.-]*\d)', re.M)
 REMOVED = re.compile(r'^##[ \t]+Removed[ \t]*$.*?(?=^##[ \t]|\Z)', re.M | re.S | re.I)
 
 

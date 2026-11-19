@@ -5,6 +5,7 @@
     claude_md_shrink.py show PROPOSAL [--file FILE]     check it and print it for the owner
     claude_md_shrink.py apply PROPOSAL [--file FILE]    move, write, then check the result
     claude_md_shrink.py verify PROPOSAL --original COPY [--file FILE]   the same check later, from a copy
+    claude_md_shrink.py merged [--side REV --side REV] [--file FILE]    after a merge: what a side added and lost
 
 Which block stays, moves or is history is decided by the session and the owner.
 This script does the mechanics and refuses what must not happen. A proposal is JSON:
@@ -51,12 +52,20 @@ Exit codes. start: 0 written, 2 refused. show: 0 valid, 1 invalid, 2 the proposa
 or the file cannot be read. apply and verify: 0 done and everything found, 1 a
 moved block, a line that stays or a pointer is missing, or a line is there that
 `apply` does not write, 2 refused, a write failed, or the file is gone.
+
+`merged` (specs/022) judges the file after a merge of two sides, or after a finished
+rebase with both sides named. A line one side added to it (git diff from the merge
+base) that the result holds fewer times than that side does, allowing for what the
+other side removed or added too, is printed as LOST with the side and its line
+number. The result is the index of an unfinished merge, else the tree of HEAD,
+across every tracked file. 0 nothing lost, 1 a LOST line, 2 nothing could be checked.
 """
 import argparse
 import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
@@ -795,6 +804,135 @@ def cmd_verify(args):
     return verdict(data, source, file, blocks, hazards)
 
 
+def git_out(root, *args):
+    """stdout of a git command as bytes, or None when it fails."""
+    r = subprocess.run(['git', '-C', str(root), *args], capture_output=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def git_line(root, *args):
+    out = git_out(root, *args)
+    return out.decode('utf-8', 'replace').strip() if out is not None else None
+
+
+def count(root, entries, wanted):
+    """count(T, L) for each L in `wanted`, across the (mode, oid) entries that are regular files and UTF-8 text.
+    One blob is held at a time, and only the wanted lines are counted."""
+    counts = Counter()
+    oids = [oid for mode, oid in entries if mode in ('100644', '100755')]
+    if not oids or not wanted:
+        return counts
+    batch = subprocess.Popen(['git', '-C', str(root), 'cat-file', '--batch'], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE)
+    try:
+        for oid in oids:                         # without --buffer, git answers each object before the next is asked
+            batch.stdin.write(oid.encode() + b'\n')
+            batch.stdin.flush()
+            size = int(batch.stdout.readline().split()[2])
+            body = batch.stdout.read(size)
+            batch.stdout.read(1)
+            try:
+                text = body.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                continue
+            counts.update(line for line in lines_of(text) if line in wanted)
+    finally:
+        batch.stdin.close()
+        batch.wait()
+    return counts
+
+
+def entries_of(root, ref):
+    """(mode, oid) of every file git tracks in the tree of `ref`, or, with None, at stage 0 of the index."""
+    if ref is None:
+        rows = [row.split(b'\t')[0].decode().split() for row in git_out(root, 'ls-files', '-s', '-z').split(b'\0') if row]
+        return [(mode, oid) for mode, oid, stage in rows if stage == '0']
+    rows = [row.split(b'\t')[0].decode().split() for row in git_out(root, 'ls-tree', '-r', '-z', ref).split(b'\0') if row]
+    return [(mode, oid) for mode, _, oid in rows]
+
+
+HUNK = re.compile(rb'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', re.M)
+
+
+def added(root, base, side, path):
+    """The line numbers of the file at `side` that git diff adds against `base`, whatever the user's diff
+    configuration or .gitattributes say."""
+    out = git_out(root, 'diff', '--no-ext-diff', '--no-textconv', '--no-color', '--text', '-U0',
+                  '--inter-hunk-context=0', base, side, '--', f':(literal){path}')
+    if out is None:
+        raise Unusable(f'git diff {base} {side} -- {path} failed: nothing was checked')
+    return [n for m in HUNK.finditer(out) for n in range(int(m.group(1)), int(m.group(1)) + int(m.group(2) or 1))]
+
+
+def cmd_merged(args):
+    root = git_line('.', 'rev-parse', '--show-toplevel')
+    if not root:
+        raise Unusable('not a git repository: nothing was checked')
+    root = Path(root)
+    if any(os.path.exists(Path(root, git_line(root, 'rev-parse', '--git-path', name))) for name in ('rebase-merge', 'rebase-apply')):
+        raise Unusable('a rebase is in progress: finish it, then run merged with --side ORIG_HEAD --side <upstream>')
+    try:
+        path = Path(os.path.relpath((args.file or root / 'CLAUDE.md').resolve(), root.resolve())).as_posix()
+    except ValueError:
+        raise Unusable(f'{args.file} is not in the repository at {root}: nothing was checked')
+    merge_head = Path(root, git_line(root, 'rev-parse', '--git-path', 'MERGE_HEAD'))
+    merging = merge_head.is_file()
+    heads = merge_head.read_text(encoding='utf-8').split() if merging else []
+    if len(heads) > 1:
+        raise Unusable(f'MERGE_HEAD names {len(heads)} commits: only a merge of two can be checked')
+    parents = (git_line(root, 'rev-list', '--parents', '-n1', 'HEAD') or '').split()[1:]
+    if len(parents) > 2:
+        raise Unusable(f'HEAD is a merge of {len(parents)} parents: only a merge of two can be checked')
+    if args.side:
+        if len(args.side) != 2:
+            raise Unusable(f'--side is given {len(args.side)} time(s): name both sides, or none')
+        sides = args.side
+    elif merging:
+        sides = ['HEAD', 'MERGE_HEAD']
+    elif len(parents) == 2:
+        sides = ['HEAD^1', 'HEAD^2']
+    else:
+        raise Unusable('no merge to check: HEAD is not a merge and none is in progress. '
+                       'After a rebase, name both sides: --side ORIG_HEAD --side <upstream>')
+    revs = []
+    for side in sides:
+        rev = git_line(root, 'rev-parse', '-q', '--verify', f'{side}^{{commit}}')
+        if not rev:
+            raise Unusable(f'{side} cannot be read as a commit: nothing was checked')
+        revs.append(rev)
+    bases = (git_line(root, 'merge-base', '--all', *revs) or '').split()
+    if len(bases) != 1:
+        raise Unusable(f'{sides[0]} and {sides[1]} have {len(bases)} merge bases: only one can be checked')
+    base = bases[0]
+    texts = []
+    for side, rev in zip(sides, revs):
+        raw = git_out(root, 'cat-file', 'blob', f'{rev}:{path}')
+        if raw is None:
+            raise Unusable(f'{path} does not exist at {side}: nothing was checked')
+        try:
+            texts.append(lines_of(raw.decode('utf-8-sig')))
+        except UnicodeDecodeError:
+            raise Unusable(f'{path} at {side} is not UTF-8 text: nothing was checked')
+    if merging and git_out(root, 'ls-files', '-u'):
+        raise Unusable('the merge still has unmerged files (git ls-files -u): resolve and git add them first')
+    judged = [[(n, texts[s][n - 1]) for n in added(root, base, rev, path) if not blank(texts[s][n - 1])]
+              for s, rev in enumerate(revs)]
+    wanted = {line for lines in judged for _, line in lines}
+    result = count(root, entries_of(root, None if merging else 'HEAD'), wanted)
+    counts = [count(root, entries_of(root, rev), wanted) for rev in revs]
+    at_base = count(root, entries_of(root, base), wanted)
+    print(f'merged: {path}, {sides[0]} and {sides[1]} against their merge base {base[:12]}; the result is '
+          + ('the index of the unfinished merge' if merging else 'the tree of HEAD'))
+    found = 0
+    for s, side in enumerate(sides):
+        mine, other = counts[s], counts[1 - s]
+        for n, line in judged[s]:
+            if result[line] < mine[line] + min(0, other[line] - at_base[line]):
+                print(f'LOST  {side}  {path}:{n}  {line}')
+                found += 1
+    return 1 if found else 0
+
+
 def main(argv=None):
     for stream in (sys.stdout, sys.stderr):      # a Windows console is not UTF-8 by default
         try:
@@ -817,6 +955,10 @@ def main(argv=None):
         command.set_defaults(run=run)
         if name == 'verify':
             command.add_argument('--original', type=Path, required=True)
+    merge = sub.add_parser('merged', help='after a merge or a finished rebase: name each line a side added and lost')
+    merge.add_argument('--file', type=Path, help='the file to judge (default: CLAUDE.md at the git root)')
+    merge.add_argument('--side', action='append', help='a side, given twice (after a rebase: ORIG_HEAD and <upstream>)')
+    merge.set_defaults(run=cmd_merged)
     args = ap.parse_args(argv)
     try:
         return args.run(args)

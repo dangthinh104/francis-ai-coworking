@@ -43,7 +43,7 @@ DONE_TASK = re.compile(ITEM + r'\[[xX]\]', re.M)
 FIXES = re.compile(r'^#{2,3}[ \t]+Fixes\b[^\n]*$.*?(?=^#{1,3}[ \t]|\Z)', re.M | re.S | re.I)
 BLANK = re.compile(r'<[a-z][^<>\n]*>')
 NO_TEST = re.compile(r'^(?:(?:/bin/|/usr/bin/)?true|:|exit(?: 0)?|echo|printf)(?:\s.*)?$')
-PIN = re.compile(r'kit:map revision=[0-9a-f]{7,40}')
+PIN = re.compile(r'kit:map revision=([0-9a-f]{7,40})')
 MATCH_SECONDS = 5
 MAX_NODES = 100_000
 MARKETPLACE = 'francis-ai-coworking'
@@ -730,6 +730,30 @@ def judge_map(root, gaps):
             gaps['S13'].append(Gap('map.refs.json has no commit in meta.repository.revision'))
         elif not cites_something(data):
             gaps['S13'].append(Gap('map.refs.json cites nothing: no `sources` entry with a `path`'))
+        else:
+            first = doc.splitlines()[0] if doc else ''
+            markdown = PIN.search(first)
+            if markdown and pin_behind(root, markdown.group(1), pinned):
+                prefix = claude_md_audit.git(root, 'rev-parse', '--show-prefix')
+                where = (prefix.stdout.strip() if prefix and prefix.returncode == 0 else '') + 'docs/ARCHITECTURE.md'
+                note(f'S13: {where} is pinned to {markdown.group(1)[:8]}, behind map.refs.json at {pinned[:8]}: '
+                     f'read the REVIEW list of map_check.py, then set line 1 of the map (map-project, Refresh step 4)')
+
+
+def pin_behind(root, markdown, json_pin):
+    """True only when git proves the map's pin lacks the commit of its citation file's pin (023/FR-003);
+    a pin git cannot resolve, or any pin in a shallow clone, where ancestry is cut, is not compared."""
+    shallow = claude_md_audit.git(root, 'rev-parse', '--is-shallow-repository')
+    if shallow is None or shallow.stdout.strip() != 'false':
+        return False
+    commits = []
+    for rev in (markdown, json_pin):
+        out = claude_md_audit.git(root, 'rev-parse', '--verify', '--quiet', f'{rev}^{{commit}}')
+        if out is None or out.returncode != 0:
+            return False
+        commits.append(out.stdout.strip())
+    out = claude_md_audit.git(root, 'merge-base', '--is-ancestor', commits[1], commits[0])
+    return out is not None and out.returncode == 1
 
 
 def cites_something(node):

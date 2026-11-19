@@ -120,10 +120,11 @@ def main(argv):
         return 1
     diff = git(root, 'diff', '--name-only', '--relative', f'{rev}..HEAD', '--', '.')
     changed = [name for name in (diff.stdout if diff else '').splitlines() if name]
-    touched = sorted(c for c in changed
-                     if c in cited or any(c.startswith(d + '/') for d in cited))
+    direct = {c for c in changed if c in cited}
+    under = {c for c in changed if c not in direct and any(c.startswith(d + '/') for d in cited)}
+    touched = sorted(direct | under)
     print(f'pin: {rev[:8]}, files changed since: {len(changed)}, '
-          f'of which cited by the map: {len(touched)}')
+          f'of which cited by the map: {len(direct)} directly, {len(under)} under a cited directory')
     for t in touched[:20]:
         print(f'  REVIEW {t}')
     return code

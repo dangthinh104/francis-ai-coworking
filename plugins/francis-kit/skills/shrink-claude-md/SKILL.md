@@ -104,6 +104,21 @@ python3 "${CLAUDE_SKILL_DIR}/../kit-init/scripts/claude_md_audit.py" --repo "$(g
 
 The audit runs as in Step 1, so a `CLAUDE.md` in a subdirectory the manifest does not list is measured too. Paste both. S02 and S18 must pass for this file: 150 lines at most, and every path it names exists, the pointers included. When S02 is still a gap the file is still too long: that is a second proposal, not an edit by hand. Remove an S02 deviation the manifest holds for this file's length.
 
+## After a merge
+
+When a branch that applied a shrink meets a change to a block that moved, carry the change, including a deletion, into the block's target: keeping the pointer in CLAUDE.md drops it.
+
+Run `merged` after every merge where either side applied a shrink, before or after the merge is committed, and after every finished rebase of such a branch with `--side ORIG_HEAD --side <upstream>`; paste its output.
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/claude_md_shrink.py" merged
+python3 "${CLAUDE_SKILL_DIR}/scripts/claude_md_shrink.py" merged --side ORIG_HEAD --side <upstream>
+```
+
+It prints `LOST  <side>  CLAUDE.md:<n>  <text>` for each line one side added to `CLAUDE.md` that the result holds nowhere. During an unfinished merge the result is what is `git add`ed, so add the target before you run it. It exits 2 while a file is unmerged or a rebase is in progress, and does not see a line the other side only deleted or an old copy left in another file: carry those by hand.
+
+A `LOST` line you accept, such as an approved `delete: history` block the other side edited, still exits 1: name it in the pull request with the reason; before a squash-and-merge, merge the target branch into the pull request's branch and run `merged` there.
+
 ## Report
 
 1. Lines and estimated size before and after

@@ -197,7 +197,10 @@ def _style(path: Path) -> tuple[str, int | str | None, str, bool]:
 
 
 def _dump(path: Path, data: dict) -> None:
-    """Replace the file in one step: an interrupted or failed write leaves the old one."""
+    """Replace the file in one step: an interrupted or failed write leaves the old one.
+    The only write of this script, and only to a citation file: the map's pin is a person's (023/FR-002)."""
+    if path.suffix.lower() != '.json':      # rglob('*.json') ignores case on Windows
+        raise ValueError(f'refusing to write {path.name}: only a citation file is written')
     bom, indent, newline, escaped = _style(path) if path.is_file() else ('', 2, '\n', False)
     text = json.dumps(data, ensure_ascii=escaped, indent=indent) + '\n'
     text = re.sub(r'"\\u0000kit-number:([^"]*)"', r'\1', text)
@@ -787,10 +790,46 @@ def _touched_paths(touched: list[str]) -> set[str]:
     return only_paths
 
 
+MAP_PIN = re.compile(r'kit:map revision=([0-9a-f]{7,40})')
+
+
+def _commit_of(rev: str) -> str | None:
+    run = _git('rev-parse', '--verify', '--quiet', f'{rev}^{{commit}}')
+    return run.stdout.strip() if run.returncode == 0 else None
+
+
+def _map_pin_line(diagram_paths: list[Path], pinned: list[str]) -> str | None:
+    """The `map pin:` line of 023/FR-001: the citation file of the map was pinned and the map's own pin,
+    which only a person sets (023/FR-002: this script never writes the map), lacks that commit."""
+    refs = (PROJECT_ROOT / 'docs' / 'diagrams' / 'map.refs.json').resolve()
+    if not any(p.resolve() == refs and _key(p) in pinned for p in diagram_paths):
+        return None
+    the_map = PROJECT_ROOT / 'docs' / 'ARCHITECTURE.md'
+    try:
+        first = the_map.read_text(encoding='utf-8', errors='replace').split('\n', 1)[0]
+    except OSError:
+        return None
+    markdown, json_pin = MAP_PIN.search(first), _pin_of(_load(refs))
+    if not markdown or not json_pin:
+        return None
+    # A shallow clone cuts ancestry, so a pin ahead could read as behind: not compared (023, Definitions).
+    if _git('rev-parse', '--is-shallow-repository').stdout.strip() != 'false':
+        return None
+    older, newer = _commit_of(markdown.group(1)), _commit_of(json_pin)
+    if not older or not newer or _git('merge-base', '--is-ancestor', newer, older).returncode != 1:
+        return None
+    try:
+        where = the_map.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+    except ValueError:
+        return None
+    return (f'map pin: {where} is at {markdown.group(1)[:8]}, behind map.refs.json at {json_pin[:8]}: '
+            f'read the REVIEW list of map_check.py, then set line 1 of the map (map-project, Refresh step 4)')
+
+
 def _fix(diagram_paths: list[Path], findings: list[Finding],
-         only_paths: set[str] | None) -> tuple[list[Finding], bool]:
+         only_paths: set[str] | None) -> tuple[list[Finding], bool, list[str]]:
     """Re-point and re-pin what fully resolves; return the findings as they stand afterwards,
-    and whether an uncommitted cited file refused the whole run."""
+    whether an uncommitted cited file refused the whole run, and the files now pinned to HEAD."""
     # Decide ONCE, from the verdicts taken before any write, then do both
     # halves on the same set of diagrams.
     refused = bool(_blocked(findings))
@@ -810,7 +849,7 @@ def _fix(diagram_paths: list[Path], findings: list[Finding],
         print(f'  after the fix: {len(findings) - len(still)} ok'
               + (f', {len(still)} still unresolved' if still else
                  ', all citations exact'))
-    return findings, refused
+    return findings, refused, targets
 
 
 def _hook_report(diagram_paths: list[Path], findings: list[Finding], only_paths: set[str]) -> None:
@@ -909,8 +948,11 @@ def _main(argv: list[str]) -> int:
 
     left = []
     if args.fix:
-        findings, refused = _fix(diagram_paths, findings, only_paths)
+        findings, refused, pinned = _fix(diagram_paths, findings, only_paths)
         failing = [f for f in findings if f.verdict in _FAILING]
+        behind = _map_pin_line(diagram_paths, pinned)
+        if behind:
+            print(behind)
         # Whatever kept a citation from being repaired, say which, and fail. Only a refusal that left
         # nothing but `moved` needs a commit and no person (016/FR-010).
         left = [f for f in findings if f.verdict != OK]

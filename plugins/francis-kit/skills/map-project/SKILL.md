@@ -92,7 +92,7 @@ All must be green. Reading the output:
 1. Run Verify.
 2. `moved` only: commit the code first, run `cite_refs.py ... --fix`, commit the changed JSON. `--fix` re-points numbers and advances the pin together, per file, and refuses while a cited file is uncommitted. It exits 1 and prints each citation it left other than `ok` (path, line, verdict), whatever kept it from repairing it: those need you, and no second run of `--check` is needed to find them. Exit 0 means every citation it read is `ok`.
 3. Anything else red, or `REVIEW` files whose section no longer matches: re-trace that part of the code, rewrite only the affected section and its citations.
-4. Set the Markdown pin on line 1 to the commit you just verified against, and commit.
+4. Set the Markdown pin on line 1 to the commit you just verified against, and commit. No tool sets it. Until you do, a `map pin:` line from `--fix` and a `note: S13` from the doctor both say this step is still owed: the map's pin is behind the commit its citations were checked at.
 5. If `.claude/kit.yml` still lists S12 or S13 under `deviations`, remove those entries: the doctor fails on a deviation that no longer applies.
 
 In CI, check out with full history (`fetch-depth: 0`).
