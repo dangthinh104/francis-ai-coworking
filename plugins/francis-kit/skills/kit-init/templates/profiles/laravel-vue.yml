@@ -1,0 +1,41 @@
+version: 2
+projects:
+  - name: {{NAME}}
+    root: {{ROOT}}
+    setup:
+      - composer install --no-interaction
+      - npm ci
+    # `php artisan test` is NOT listed on purpose. Add it only after phpunit.xml
+    # pins an isolated database (sqlite :memory: or a dedicated test database):
+    # tests that use RefreshDatabase wipe whatever database .env names.
+    test:
+      - npm run build
+    lint:
+      - ./vendor/bin/pint --test
+    audit:
+      - composer audit
+      - npm audit --audit-level=high
+    ci_only: []
+    interface: true             # true when people use it through screens: then docs/VOICE.md and docs/DESIGN.md are required (S16)
+    tracker:
+      type: none                 # jira | github | azure-devops | monday | none
+      id_pattern: ''             # quote it: 'SCRUM-\d+' or '#\d+'
+    release:
+      pr_target:                 # fill in: the branch pull requests go to
+      deploy_branches:           # fill in: every branch whose push deploys; [] only if none does
+    deviations:
+      - rule: S12
+        reason: no map yet
+        fix: run the project-mapper agent once there is code to trace; it removes this entry
+      - rule: S13
+        reason: no map yet
+        fix: written by the project-mapper agent together with the map; it removes this entry
+      - rule: S16
+        reason: voice and design direction not written yet
+        fix: fill docs/VOICE.md and docs/DESIGN.md with the user before the first screen is built, then remove this entry
+      - rule: S19
+        reason: no workflow of the project runs the tests on pull requests yet
+        fix: make a workflow run each `test` entry on pull requests to release.pr_target, word for word, then remove this entry
+        names:                   # exactly the `test` entries no workflow runs: change both together
+          - npm run build
+scratch: []

@@ -1,0 +1,32 @@
+version: 2
+projects:
+  - name: {{NAME}}
+    root: {{ROOT}}
+    setup: []                    # fill in: how dependencies are installed (pip, uv, poetry)
+    test:
+      - python -m pytest -q
+    lint: []                     # fill in if the project has a linter
+    audit:
+      - pip-audit -r requirements.txt   # S17. Audit the project's own pins, not whatever is installed where this runs:
+                                        # with uv, `uv run --with pip-audit pip-audit`
+    ci_only: []
+    interface: false            # true when people use it through screens: then docs/VOICE.md and docs/DESIGN.md are required (S16)
+    tracker:
+      type: none                 # jira | github | azure-devops | monday | none
+      id_pattern: ''             # quote it: 'SCRUM-\d+' or '#\d+'
+    release:
+      pr_target:                 # fill in: the branch pull requests go to
+      deploy_branches:           # fill in: every branch whose push deploys; [] only if none does
+    deviations:
+      - rule: S12
+        reason: no map yet
+        fix: run the project-mapper agent once there is code to trace; it removes this entry
+      - rule: S13
+        reason: no map yet
+        fix: written by the project-mapper agent together with the map; it removes this entry
+      - rule: S19
+        reason: no workflow of the project runs the tests on pull requests yet
+        fix: make a workflow run each `test` entry on pull requests to release.pr_target, word for word, then remove this entry
+        names:                   # exactly the `test` entries no workflow runs: change both together
+          - python -m pytest -q
+scratch: []

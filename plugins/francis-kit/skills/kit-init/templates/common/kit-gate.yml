@@ -1,0 +1,70 @@
+name: kit-gate
+
+# Checks the repository against the francis-kit standard.
+# Needs the secret KIT_READ_TOKEN: a token that can read dangthinh104/francis-ai-coworking.
+# Runs where the repository variable KIT_GATE_RUNNER points, as JSON ("team-runner" or ["self-hosted", "team-runner"]); unset: ubuntu-latest.
+# The kit is pinned to a tag; raise `ref` on purpose, never follow a branch.
+# Actions are pinned to a commit: a tag can be moved, a commit cannot.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  standard:
+    # A fork or Dependabot gets no secret: no gate starts there, so no step of theirs reaches the project's runner.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')
+    runs-on: ${{ fromJSON(vars.KIT_GATE_RUNNER || '"ubuntu-latest"') }}
+    timeout-minutes: 5
+    steps:
+      - name: Secret present?
+        env:
+          KIT_READ_TOKEN: ${{ secrets.KIT_READ_TOKEN }}
+        run: |
+          if [ -z "$KIT_READ_TOKEN" ]; then
+            echo "::error::KIT_READ_TOKEN is not set: the standard was NOT checked. Add the repository secret (read access to dangthinh104/francis-ai-coworking)."
+            exit 1
+          fi
+      - name: Runner ready?
+        if: vars.KIT_GATE_RUNNER != ''
+        run: |
+          # Without git, actions/checkout fetches an archive with no history and the checks pass on nothing.
+          if ! python3 -c "import sys, venv, ensurepip; sys.exit(sys.version_info < (3, 9))"; then
+            echo "::error::This runner has no python3 of 3.9 or newer with venv and ensurepip: the standard was NOT checked."
+            exit 1
+          fi
+          if ! git --version; then
+            echo "::error::This runner has no git: the standard was NOT checked."
+            exit 1
+          fi
+      # Everything the gate writes in the workspace stays below .kit-gate: the workspace may be shared with other workflows.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          path: .kit-gate/project
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          repository: dangthinh104/francis-ai-coworking
+          ref: {{KIT_REF}}
+          token: ${{ secrets.KIT_READ_TOKEN }}
+          path: .kit-gate/kit
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        if: vars.KIT_GATE_RUNNER == ''
+        with:
+          python-version: '3.12'
+      - name: Python for the checks
+        run: |
+          python3 -m venv "$RUNNER_TEMP/kit-gate-venv"
+          "$RUNNER_TEMP/kit-gate-venv/bin/python" -m pip install -q --no-cache-dir --disable-pip-version-check pyyaml==6.0.3
+          echo "$RUNNER_TEMP/kit-gate-venv/bin" >> "$GITHUB_PATH"
+      - name: Standard
+        working-directory: .kit-gate/project
+        run: python ../kit/plugins/francis-kit/skills/kit-init/scripts/kit_gate.py --repo .
+      - name: Leave nothing behind
+        if: always()
+        run: rm -rf .kit-gate "$RUNNER_TEMP/kit-gate-venv"

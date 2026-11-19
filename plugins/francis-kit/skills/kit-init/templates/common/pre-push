@@ -1,0 +1,130 @@
+#!/bin/sh
+# The francis-kit gate, run by git before each push: kit_gate.py of the kit at KIT_REF.
+# Switch it on once per clone: git config core.hooksPath .githooks
+# The kit is fetched once per version, with your own git access, into <git common dir>/kit-gate.
+# It fails closed: a push it cannot check is refused. It needs Python 3.9 or newer with PyYAML
+# on the PATH of the git client that pushes. A push that sends nothing is checked, never refused.
+KIT_REF={{KIT_REF}}
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+# Git hands the hook the remote's name and location; a hand run gives no argument.
+by_git=
+[ $# -eq 0 ] || by_git=yes
+
+# One line per ref pushed: <ref> <sha> <remote ref> <remote sha>; a sha of zeros deletes the remote ref.
+sent=
+pushed=
+if [ ! -t 0 ]; then
+  while read -r ref sha remote remote_sha || [ -n "$ref" ]; do
+    [ -n "$ref" ] || continue
+    sent=yes
+    case $sha in
+      '' | *[!0]*) pushed="$pushed $remote $sha" ;;
+    esac
+  done
+fi
+if [ -n "$sent" ] && [ -z "$pushed" ]; then
+  printf '%s\n' 'kit-gate: only deletions are pushed: the standard was not checked.'
+  exit 0
+fi
+# With an empty input nothing is sent, so nothing is refused: the verdict is printed all the same.
+refuse() {
+  [ -n "$sent" ] || exit 0
+  exit "$1"
+}
+
+# A Python is known by what it prints: a stub can exit 0 and print something else.
+python=
+modern=
+for name in python3 python; do
+  if [ "$("$name" -c 'import sys; sys.stdout.write(str(sys.version_info >= (3, 9)))' 2>/dev/null)" = True ]; then
+    modern=yes
+    if [ "$("$name" -c 'import sys, yaml; sys.stdout.write("yaml")' 2>/dev/null)" = yaml ]; then
+      python=$name
+      break
+    fi
+  fi
+done
+if [ -z "$python" ]; then
+  if [ -z "$modern" ]; then
+    printf '%s\n' 'kit-gate: no python3 or python of 3.9 or newer runs on this machine: the standard was NOT checked.' >&2
+  else
+    printf '%s\n' 'kit-gate: no python3 or python of 3.9 or newer on this machine can import yaml (pip install pyyaml): the standard was NOT checked.' >&2
+  fi
+  refuse 1
+fi
+
+there() {
+  "$python" -c 'import json, sys; sys.exit(json.load(open(sys.argv[1], encoding="utf-8")).get("version") != sys.argv[2])' \
+    "$1/plugins/francis-kit/.claude-plugin/plugin.json" "${KIT_REF#v}" >/dev/null 2>&1
+}
+
+common=$(git rev-parse --git-common-dir 2>/dev/null)
+home="$common/kit-gate"
+kit="$home/$KIT_REF"
+if [ -z "$common" ] || ! there "$kit"; then
+  from=$(git config --get kit.gateSource 2>/dev/null)
+  [ -n "$from" ] || from=https://github.com/dangthinh104/francis-ai-coworking.git
+  fetch="$home/.fetch-$KIT_REF-$$"
+  # The clone's own .git is dropped: the source may carry a credential in its URL.
+  if [ -n "$common" ] && mkdir -p "$home" && rm -rf "$fetch" &&
+    GIT_TERMINAL_PROMPT=0 git -c advice.detachedHead=false clone -q --branch "$KIT_REF" "$from" "$fetch" >/dev/null 2>&1; then
+    rm -rf "$fetch/.git" "$kit" && mv "$fetch" "$kit"
+  fi
+  rm -rf "$fetch"
+  if [ -z "$common" ] || ! there "$kit"; then
+    shown=$from
+    case $from in
+      *://*)
+        rest=${from#*://}
+        host=${rest%%/*}
+        shown="${from%%://*}://${host##*@}${rest#"$host"}"
+        ;;
+    esac
+    printf '%s\n' "kit-gate: could not fetch the kit at $KIT_REF from $shown, which needs read access to that repository with your own git credentials: the standard was NOT checked." >&2
+    refuse 1
+  fi
+fi
+
+gate="$kit/plugins/francis-kit/skills/kit-init/scripts/kit_gate.py"
+short=
+if [ -n "$by_git" ] && [ -z "$sent" ]; then
+  # A push that sends nothing keeps the verdict line alone; a hand run prints every line of the checks.
+  said=$("$python" "$gate" --repo .)
+  status=$?
+  nl='
+'
+  case $status in
+    0 | 1) short=yes; said=${said##*"$nl"} ;;
+  esac
+  [ -z "$said" ] || printf '%s\n' "$said"
+else
+  "$python" "$gate" --repo .
+  status=$?
+fi
+case $status in
+  0 | 1) ;;
+  *) refuse "$status" ;;
+esac
+
+# What a reviewer reads in the pull request: the commits pushed, beside the commit judged.
+judged=$(git rev-parse --verify -q 'HEAD^{commit}' 2>/dev/null)
+if [ -z "$pushed" ]; then
+  if [ -n "$short" ] && [ "$status" = 1 ]; then
+    printf '%s\n' 'kit-gate: the lines of the checks are left out on a push that sends nothing: run sh .githooks/pre-push to read them'
+  fi
+  printf '%s\n' 'kit-gate: nothing was pushed, so this verdict refuses nothing'
+else
+  among=
+  set -f
+  set -- $pushed
+  set +f
+  while [ $# -gt 1 ]; do
+    printf '%s\n' "kit-gate: pushed $1 at $2"
+    if [ -n "$judged" ] && [ "$(git rev-parse --verify -q "$2^{commit}" 2>/dev/null)" = "$judged" ]; then
+      among=yes
+    fi
+    shift 2
+  done
+  [ -n "$among" ] || printf '%s\n' 'kit-gate: the commit judged is not among the commits pushed'
+fi
+refuse "$status"
