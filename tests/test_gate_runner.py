@@ -166,10 +166,18 @@ def checks_env(tmp_path_factory):
         r = subprocess.run(['python3', '-c', 'import yaml'], env=env, capture_output=True, text=True, encoding='utf-8')
         return r.returncode, r.stderr
 
+    # What bash itself leaves in an empty HOME on this machine (a hosted runner's image creates ~/.rustup):
+    # the step is judged on what it adds beyond that.
+    control = base / 'control'
+    (control / 'home').mkdir(parents=True)
+    (control / 'cache').mkdir()
+    bash(':', control, dict(env, HOME=str(control / 'home'), XDG_CACHE_HOME=str(control / 'cache')))
+    shell_leaves = {p.name for p in (control / 'home').iterdir()} | {p.name for p in (control / 'cache').iterdir()}
+
     before = system_yaml()
     done = bash(step('Python for the checks')['run'], base, env)
     return {'done': done, 'temp': temp, 'home': home, 'cache': cache, 'github_path': github_path,
-            'bin': temp / 'kit-gate-venv' / 'bin', 'yaml': (before, system_yaml())}
+            'bin': temp / 'kit-gate-venv' / 'bin', 'yaml': (before, system_yaml()), 'shell_leaves': shell_leaves}
 
 
 @linux_only
@@ -179,7 +187,8 @@ def test_the_environment_holds_pyyaml_and_nothing_lands_in_home(checks_env):
     assert done.returncode == 0, done.stdout + done.stderr
     r = subprocess.run([str(checks_env['bin'] / 'python'), '-c', 'import yaml'], capture_output=True, text=True, encoding='utf-8')
     assert r.returncode == 0, r.stderr
-    assert list(checks_env['home'].iterdir()) == [] and list(checks_env['cache'].iterdir()) == []
+    landed = {p.name for p in checks_env['home'].iterdir()} | {p.name for p in checks_env['cache'].iterdir()}
+    assert landed - checks_env['shell_leaves'] == set(), landed
     assert checks_env['github_path'].read_text(encoding='utf-8').splitlines() == [str(checks_env['bin'])]
     before, after = checks_env['yaml']
     assert before == after
