@@ -1,6 +1,6 @@
 {
   "name": "francis-ai-coworking",
-  "owner": { "name": "Francis Dang" },
+  "owner": { "name": "Francis Dang", "url": "https://francisdang.com" },
   "metadata": {
     "description": "Shared Claude Code skills and agents for Francis's Spec Kit projects."
   },

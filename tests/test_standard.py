@@ -839,6 +839,7 @@ GATE_CASES = [
 ]
 
 
+@pytest.mark.private
 @pytest.mark.skipif(sys.platform == 'win32', reason='the gate step is bash, as on the runner')
 @pytest.mark.parametrize('event,head,actor,secret,code,level', GATE_CASES)
 def test_the_gate_fails_without_its_secret_except_where_secrets_never_arrive(

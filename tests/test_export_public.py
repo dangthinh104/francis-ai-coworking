@@ -19,6 +19,9 @@ def test_the_public_copy_holds_no_forbidden_word(tmp_path):
     assert not (out / 'specs').exists() and not (out / 'CHANGELOG.md').exists() and not (out / 'evals').exists()
     gate = (out / 'plugins/francis-kit/skills/kit-init/templates/common/kit-gate.yml').read_text(encoding='utf-8')
     assert 'repository: dangthinh104/francis-ai-coworking' in gate
+    assert 'KIT_READ_TOKEN' not in gate and 'secrets.' not in gate
+    for skill in ('kit-init', 'kit-adopt'):
+        assert 'KIT_READ_TOKEN' not in (out / f'plugins/francis-kit/skills/{skill}/SKILL.md').read_text(encoding='utf-8')
     assert 'pytest_collection_modifyitems' in (out / 'tests' / 'conftest.py').read_text(encoding='utf-8')
 
 

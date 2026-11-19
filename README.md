@@ -110,7 +110,7 @@ A project chooses one gate, and the scaffold writes it:
 
 Both check out this repository at the tag of the kit version that wrote them, and run `kit_gate.py`. A project moves to a newer kit by running `kit_scaffold.py --repo . --gate` again with that version. The doctor reports a gate that pins an older kit as a gap until it moves.
 
-The workflow asks for a repository secret named `KIT_READ_TOKEN` and fails without it. This repository is public, so a token that can read public repositories is enough.
+Neither gate needs a secret: the kit is public. The workflow does not start on pull requests from a fork or from Dependabot.
 
 ## Tests
 
@@ -122,6 +122,10 @@ python -m pytest tests -q
 `sh local-check.sh` runs the suite here, and on Linux with Python 3.9 and 3.12 in Docker.
 
 The kit is developed in a private repository. This copy is published at each release, without history and without the specs and fixtures that came from private projects. Tests that need those files are left out of this copy.
+
+## Author
+
+Francis Dang, [francisdang.com](https://francisdang.com).
 
 ## License
 

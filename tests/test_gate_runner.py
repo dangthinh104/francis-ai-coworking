@@ -98,6 +98,7 @@ def test_a_gate_of_this_version_passes_s14_and_a_runner_typed_into_it_does_not(t
     assert 'not the gate of this kit version' in run(DOCTOR, '--repo', tmp_path).stdout
 
 
+@pytest.mark.private
 def test_the_runner_is_checked_before_any_checkout():
     """009/FR-004, SC-004: what the text of the step says."""
     steps = job()['steps']
@@ -268,6 +269,7 @@ def test_the_last_step_removes_the_gates_directory_and_environment_only(tmp_path
         assert not (ws / '.kit-gate').exists() and not (temp / 'kit-gate-venv').exists()
 
 
+@pytest.mark.private
 def test_a_missing_secret_is_never_a_warning():
     """009/FR-003, SC-010: the text; the step run by bash is `GATE_CASES` of `tests/test_standard.py`."""
     assert git_grep('::warning::', TEMPLATE_IN_GIT) == ''

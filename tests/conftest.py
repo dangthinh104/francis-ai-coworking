@@ -3,7 +3,8 @@ import pytest
 
 def pytest_configure(config):
     config.addinivalue_line('markers', 'private: needs a file only the private repository has '
-                            '(its specs, changelog, tags, evals or a project fixture); the public copy leaves it out')
+                            '(its specs, changelog, tags, evals or a project fixture), or tests the secret step the public '
+                            'gate does not have; the public copy leaves it out')
 
 
 def link(path, target):
