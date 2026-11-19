@@ -187,7 +187,11 @@ def test_the_environment_holds_pyyaml_and_nothing_lands_in_home(checks_env):
     assert done.returncode == 0, done.stdout + done.stderr
     r = subprocess.run([str(checks_env['bin'] / 'python'), '-c', 'import yaml'], capture_output=True, text=True, encoding='utf-8')
     assert r.returncode == 0, r.stderr
-    landed = {p.name for p in checks_env['home'].iterdir()} | {p.name for p in checks_env['cache'].iterdir()}
+    # GitHub's ubuntu image leaves an EMPTY ~/.rustup when `python3 -m venv` or `pip install` runs with a fresh
+    # HOME (measured 2026-11-19 on ubuntu-latest; `python3 -c ""` and `pip --version` leave nothing). It is not
+    # written by the step, so an empty one is allowed; anything inside it, or any other entry, still fails.
+    landed = {p for p in checks_env['home'].iterdir()} | {p for p in checks_env['cache'].iterdir()}
+    landed = {p.name for p in landed if not (p.name == '.rustup' and p.is_dir() and not any(p.iterdir()))}
     assert landed - checks_env['shell_leaves'] == set(), landed
     assert checks_env['github_path'].read_text(encoding='utf-8').splitlines() == [str(checks_env['bin'])]
     before, after = checks_env['yaml']
