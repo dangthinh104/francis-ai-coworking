@@ -1,0 +1,16 @@
+{
+  "description": "Asks the person before an Edit or Write makes a spec Approved (spec 025). Never allows, never blocks.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in python3 python; do if command -v \"$p\" >/dev/null 2>&1 && \"$p\" -c \"\" </dev/null >/dev/null 2>&1; then \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\"; exit 0; fi; done; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

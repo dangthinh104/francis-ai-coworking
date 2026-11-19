@@ -1,6 +1,6 @@
 {
   "name": "francis-kit",
-  "version": "0.16.2",
+  "version": "0.17.0",
   "description": "The francis-kit standard for spec-driven projects: one layout, a doctor that checks it, and the loop from spec to closed feature.",
   "author": { "name": "Francis Dang", "url": "https://francisdang.com" }
 }

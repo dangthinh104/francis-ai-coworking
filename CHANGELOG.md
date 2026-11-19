@@ -4,6 +4,13 @@ What changes for a project that uses the kit, newest first. Each version says wh
 
 A project moves to a version by writing its gate again with that version's scaffold: `kit_scaffold.py --repo . --gate`. Until it does, the doctor reports S14 as a gap. Tags in this repository never move: a fix is a new version.
 
+## 0.17.0
+
+New:
+- **The plugin's first hook.** It is active as soon as the plugin is enabled: before an Edit or Write adds an `Approved` Status line to a `specs/NNN-*/spec.md`, Claude Code shows a permission prompt. The prompt is a confirmation, not the approval, and the hook never blocks an edit. It is turned off only by disabling the plugin or by `disableAllHooks`. What it does not see is under "Known limits" in the README.
+
+Nothing turns red: the hook is not part of the gate.
+
 ## 0.16.2
 
 New:
