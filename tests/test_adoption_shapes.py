@@ -32,7 +32,7 @@ SEVERAL = ('A rule that names things (S04 to S09, S11, S18, S19) may have severa
 OLDER_GATE = ('A project whose gate pins an older kit writes its gate again (kit_scaffold.py --repo . --gate) before '
               'it records a second entry on a rule: the gate runs the doctor of the version it pins, which reports '
               'that entry as listed twice.')
-OLDER_GATE_README = OLDER_GATE.replace('(kit_scaffold.py --repo . --gate)', '(README, "Releasing the kit", step 4)')
+OLDER_GATE_README = OLDER_GATE.replace('(kit_scaffold.py --repo . --gate)', '(README, "The gate in each project")')
 
 
 def git(repo, *args):

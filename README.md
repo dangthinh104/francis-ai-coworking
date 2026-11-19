@@ -16,6 +16,8 @@ It relies on three things it does not ship:
 - [Spec Kit](https://github.com/github/spec-kit), whose commands write `plan.md` and `tasks.md`.
 - Python 3.9 or newer, with git and PyYAML, for the scripts.
 
+One more skill is optional: [archify](https://github.com/tt-a1i/archify), which draws a project's diagrams for `map-project`. Install it on its own. Without it, a session asked for a diagram says so and stops. Checking a diagram (`cite_refs.py`) needs only the kit.
+
 ## Install
 
 In Claude Code:
@@ -101,7 +103,7 @@ Work comes in three lanes:
 | Agent | `feature-closer` | Closes a released feature in a clean context |
 | Agent | `repo-janitor` | Cleans one scoped area |
 
-## The gate
+## The gate in each project
 
 A project chooses one gate, and the scaffold writes it:
 
@@ -111,6 +113,19 @@ A project chooses one gate, and the scaffold writes it:
 Both check out this repository at the tag of the kit version that wrote them, and run `kit_gate.py`. A project moves to a newer kit by running `kit_scaffold.py --repo . --gate` again with that version. The doctor reports a gate that pins an older kit as a gap until it moves.
 
 Neither gate needs a secret: the kit is public. The workflow does not start on pull requests from a fork or from Dependabot.
+
+The gate checks out the kit by its tag. A tag can be moved, so the tags of this repository are never moved: a fix is a new version.
+
+When a project moves to a newer kit, it writes its gate again before it records a second deviation on a rule. The gate runs the doctor of the version it pins, and an older doctor reports that entry as listed twice.
+
+## Known limits
+
+- The doctor checks structure, not truth. It cannot tell whether a `Released` feature really shipped, or whether the living spec is right. Review and the `feature-closer` agent cover that.
+- The gate does not run a project's tests.
+- S19 checks that the tests run on pull requests, and it does this by reading the workflow files under `.github/workflows` word for word. A project whose CI is elsewhere records S19 as debt.
+- The hook guards the author's clone, not the release: `git push --no-verify` skips it, and a merge in GitHub's web interface is not judged.
+- Rules that hold within a session, such as "only a person sets Approved", are in the skills, not in a hook. No gate can check them.
+- The test suite needs the full git history. On Windows without the symlink privilege, the tests that create a symlink are skipped one by one. A run that skipped more tests than it ran exits 1.
 
 ## Tests
 

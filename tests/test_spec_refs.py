@@ -269,6 +269,8 @@ def test_sub_project_root_and_legacy_specs_dir(tmp_path):
     (tmp_path / 'app' / 'src' / 'a.py').write_text('# 004/FR-001\n', encoding='utf-8')
     (tmp_path / 'other.py').write_text('# FR-099\n', encoding='utf-8')
     git(tmp_path, 'add', '-A')
+    s = summary(run(REFS, '--repo', tmp_path, '--root', 'app', '--report'))
+    assert s['ok'] == '1' and s['undefined'] == '0'
 
 
 

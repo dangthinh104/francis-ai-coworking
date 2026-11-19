@@ -1,4 +1,5 @@
 """tools/export_public.py: the public copy names no project and no private repository."""
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +24,20 @@ def test_the_public_copy_holds_no_forbidden_word(tmp_path):
     for skill in ('kit-init', 'kit-adopt'):
         assert 'KIT_READ_TOKEN' not in (out / f'plugins/francis-kit/skills/{skill}/SKILL.md').read_text(encoding='utf-8')
     assert 'pytest_collection_modifyitems' in (out / 'tests' / 'conftest.py').read_text(encoding='utf-8')
+    assert 'the secret' not in (out / 'plugins/francis-kit/skills/kit-init/SKILL.md').read_text(encoding='utf-8')
+
+
+@pytest.mark.private
+def test_every_readme_section_the_public_copy_names_is_in_its_readme(tmp_path):
+    """A skill or a test that says 'see README, "<section>"' must find that section in the public README."""
+    out = tmp_path / 'pub'
+    assert subprocess.run([sys.executable, str(EXPORT), str(out)], capture_output=True).returncode == 0
+    headings = {l.lstrip('#').strip() for l in (out / 'README.md').read_text(encoding='utf-8').splitlines()
+                if l.startswith('#')}
+    named = set()
+    for p in list((out / 'plugins').rglob('*.md')) + list((out / 'tests').rglob('*.py')):
+        named |= set(re.findall(r'README(?:\.md)?[,"\s]+"([A-Z][^"]+)"', p.read_text(encoding='utf-8')))
+    assert named and named <= headings, sorted(named - headings)
 
 
 @pytest.mark.private

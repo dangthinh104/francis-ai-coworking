@@ -84,7 +84,7 @@ One decision is deliberately left for later: when no design direction exists, ch
 
    In a monorepo run the scaffold once per project with `--project-root <dir>`, and add each project's entry to the manifest.
 8. The gate. Under `hosted` and `runner` the workflow reads the public kit and needs no secret. The gate does not start on pull requests from a fork or from Dependabot. Under `runner` the scaffold's last two lines are the `gh variable set KIT_GATE_RUNNER` command for the labels and the note that the kit sets nothing on GitHub: give the user both; you do not run it. Under `hook`, tell the user the two commands the scaffold prints (`git add --chmod=+x .githooks/pre-push`, and `git config core.hooksPath .githooks` in each clone) and that every developer then needs Python with PyYAML and read access to the kit's repository.
-9. Commit on the branch and report: what was written, what the user still has to do (the secret, `specify init`, a workflow that runs the tests on pull requests), and the next stage. Next: the `flow` skill. Once there is code, the `project-mapper` agent writes the map and the two deviations are removed.
+9. Commit on the branch and report: what was written, what the user still has to do (`specify init`, a workflow that runs the tests on pull requests), and the next stage. Next: the `flow` skill. Once there is code, the `project-mapper` agent writes the map and the two deviations are removed.
 
 ## The manifest
 
