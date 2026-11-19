@@ -40,6 +40,16 @@ Or let the scaffold write the keys into a project's `.claude/settings.json`, so 
 }
 ```
 
+## Updates
+
+Claude Code does not update a plugin from this marketplace by itself until you turn that on: auto-update is off by default for third-party marketplaces.
+
+- **Turn on auto-update:** run `/plugin`, open the **Marketplaces** tab, select `francis-ai-coworking`, and switch auto-update on. A new version is fetched in the background, and loads at your next launch or after `/reload-plugins`.
+- **Update now:** run `claude plugin marketplace update francis-ai-coworking`, then `claude plugin update francis-kit@francis-ai-coworking`, then start a new session.
+- **Be told of a release:** on GitHub, use **Watch → Custom → Releases** for this repository. Each version has a release page, and its section in [`CHANGELOG.md`](CHANGELOG.md) says what can turn red when you move.
+
+A project's gate does not follow the plugin: it checks out the kit at the tag it pins, and moves only when you write the gate again (`kit_scaffold.py --repo . --gate`).
+
 ## Start
 
 - **A new project:** ask Claude to run the `kit-init` skill.
