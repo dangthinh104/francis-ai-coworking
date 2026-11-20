@@ -53,14 +53,29 @@ def pinned_elsewhere(tag):
             f'`kit_scaffold.py --repo . --gate`')
 
 
+def git_usr_bin():
+    """Git for Windows' usr/bin, found above git.exe, which is in cmd/ or in mingw64/bin/ depending on the install."""
+    for folder in Path(shutil.which('git')).resolve().parents:
+        if (folder / 'usr' / 'bin' / 'sh.exe').is_file():
+            return folder / 'usr' / 'bin'
+    raise AssertionError('no usr/bin/sh.exe above ' + shutil.which('git'))
+
+
+def git_exec_path():
+    return subprocess.run(['git', '--exec-path'], capture_output=True, text=True, encoding='utf-8',
+                          check=True).stdout.strip()
+
+
+GIT_USR_BIN = git_usr_bin() if WINDOWS else None
+
+
 def find_shells():
     """`sh`, and `dash` where it is found: on the PATH, or below the directory of Git for Windows."""
     found = {name: shutil.which(name) for name in ('sh', 'dash')}
     if WINDOWS:
-        bin_dir = Path(shutil.which('git')).resolve().parent.parent / 'usr' / 'bin'
         for name in found:
-            if not found[name] and (bin_dir / f'{name}.exe').is_file():
-                found[name] = str(bin_dir / f'{name}.exe')
+            if not found[name] and (GIT_USR_BIN / f'{name}.exe').is_file():
+                found[name] = str(GIT_USR_BIN / f'{name}.exe')
     assert found['sh'], 'no sh: the hook is run by sh on every system'
     return [found['sh']] + ([found['dash']] if found['dash'] else [])
 
@@ -71,9 +86,12 @@ by_each_shell = pytest.mark.parametrize('shell', SHELLS, ids=['sh', 'dash'][:len
 
 
 def real_program(name):
-    """The full path of a POSIX utility the hook starts, as the sh of this system reads it."""
+    """The full path of a POSIX utility the hook starts, as the sh of this system reads it.
+
+    On Windows it is Git's usr/bin, not the directory of `sh`: that can be Git's bin, which holds no utility.
+    """
     if WINDOWS:
-        return (Path(SHELLS[0]).parent / f'{name}.exe').as_posix()
+        return (GIT_USR_BIN / f'{name}.exe').as_posix()
     return shutil.which(name)
 
 
@@ -88,7 +106,8 @@ def make_path(folder, pythons=('python3', 'python'), **scripts):
 
     On Windows the Python of the hook starts `git` as Windows starts a program, which finds no script and
     no link this account may make: the directory git.exe is installed in stands beside it, holding no
-    Python and none of the utilities, as in 008's `only_git`.
+    Python and none of the utilities, as in 008's `only_git`. That is the git of `git --exec-path`, never the
+    launcher in Git's bin/: an sh of Git reads that directory as /bin, its own usr/bin, and finds no git there.
     """
     folder.mkdir()
     for name in ('mkdir', 'mv', 'rm'):
@@ -100,7 +119,7 @@ def make_path(folder, pythons=('python3', 'python'), **scripts):
     if not WINDOWS:
         script(folder, 'git', f'exec "{shutil.which("git")}" "$@"')
         return str(folder)
-    installed = Path(shutil.which('git')).parent
+    installed = Path(git_exec_path()).parent.parent / 'bin'
     held = {p.stem.lower() for p in installed.iterdir()}
     assert not [n for n in held if n.startswith('python') or n in ('mkdir', 'mv', 'rm')], held
     return os.pathsep.join([str(folder), str(installed)])
