@@ -530,7 +530,9 @@ def test_gate_template_is_valid_yaml_and_pinned(tmp_path):
     kit_checkout = [s['with'] for s in checkouts if s['with'].get('repository')]
     assert len(checkouts) == 2 and len(kit_checkout) == 1
     import re
-    assert re.fullmatch(r'v\d+\.\d+\.\d+', kit_checkout[0]['ref'])
+    assert re.fullmatch(r'[0-9a-f]{40}', kit_checkout[0]['ref'])      # 026/FR-001: a commit, its tag in a comment
+    assert re.search(r'(?m)^ +ref: [0-9a-f]{40}  # v\d+\.\d+\.\d+$',
+                     (tmp_path / '.github' / 'workflows' / 'kit-gate.yml').read_text(encoding='utf-8'))
     assert all(re.search(r'@[0-9a-f]{40}  # v', s) for s in
                (l for l in (tmp_path / '.github' / 'workflows' / 'kit-gate.yml').read_text(encoding='utf-8').splitlines() if 'uses:' in l))
     assert all(s['with'].get('persist-credentials') is False for s in checkouts)
@@ -847,7 +849,7 @@ def test_the_gate_fails_without_its_secret_except_where_secrets_never_arrive(
     """009/FR-003, SC-010: a missing secret is a failure whatever else the environment holds."""
     import yaml
     template = (SCRIPTS.parent / 'templates' / 'common' / 'kit-gate.yml').read_text(encoding='utf-8')
-    step = yaml.safe_load(template.replace('{{KIT_REF}}', 'v0.0.0'))['jobs']['standard']['steps'][0]
+    step = yaml.safe_load(template.replace('{{KIT_REF}}', 'v0.0.0').replace('{{KIT_COMMIT}}', '0' * 40))['jobs']['standard']['steps'][0]
     assert step['name'] == 'Secret present?'
     env = {'PATH': '/usr/bin:/bin', 'KIT_READ_TOKEN': secret, 'EVENT': event, 'HEAD_REPO': head,
            'GITHUB_REPOSITORY': 'me/app', 'GITHUB_ACTOR': actor}
@@ -878,7 +880,7 @@ def test_s14_wants_the_gate_of_the_version_it_pins_not_any_file(project):
     for hollow, why in [('name: kit-gate\n', 'does not pin'),
                         (whole.replace('exit 1', 'exit 0'), 'not the gate of this kit version'),
                         (whole.replace('::error::', '::warning::'), 'not the gate of this kit version'),
-                        (whole.replace('v', 'x', 1) if False else whole.replace('ref: v', 'ref: main # v'), 'does not pin')]:
+                        (re.sub(r'ref: [0-9a-f]{40}', 'ref: main', whole), 'does not pin')]:
         gate_of(project).write_text(hollow, encoding='utf-8')
         r = run(DOCTOR, '--repo', project)
         assert r.returncode == 1 and why in r.stdout, (why, r.stdout)
@@ -970,7 +972,7 @@ def test_a_pattern_that_does_not_finish_cannot_be_held_as_debt(project):
 def test_s14_judges_the_gate_by_the_version_it_pins(project):
     whole = gate_of(project).read_text(encoding='utf-8')
     for other, said in (('v0.6.0', 'and a newer kit,'), ('v9.9.9', 'newer than the kit installed here')):   # 019
-        gate_of(project).write_text(re.sub(r'ref: v[\d.]+', f'ref: {other}', whole), encoding='utf-8')
+        gate_of(project).write_text(re.sub(r'(ref: [0-9a-f]{40}  # )v[\d.]+', lambda m: m.group(1) + other, whole), encoding='utf-8')
         r = run(DOCTOR, '--repo', project)
         assert r.returncode == 1 and f'pins {other}, {said}' in r.stdout, r.stdout
 

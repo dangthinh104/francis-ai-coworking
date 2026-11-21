@@ -29,7 +29,8 @@ NOTHING = 'kit-gate: nothing was pushed, so this verdict refuses nothing'      #
 TWO_COMMANDS = ('git add --chmod=+x .githooks/pre-push', 'git config core.hooksPath .githooks')
 S14_GAPS = {
     'missing': '.githooks/pre-push is missing or empty',
-    'no tag': 'pre-push does not pin the kit to a tag (`KIT_REF=v1.2.3`)',
+    'no tag': ('pre-push does not pin the kit to a commit and its tag (KIT_REF=v1.2.3 and KIT_COMMIT=<40-hex commit>): '
+               'write it again with kit_scaffold.py --repo . --gate'),      # 026, by 010/FR-002 as modified
     'other': ('pre-push is not the gate of this kit version: write it again with `kit_scaffold.py --repo . --gate` '
               '(raising `KIT_REF=` alone is not enough)'),
     'untracked': '.githooks/pre-push is not tracked by git: run `git add --chmod=+x .githooks/pre-push`',
@@ -41,9 +42,15 @@ BOTH_HOOK = (".githooks/pre-push is the kit's hook and the manifest names the wo
              'a project holds one gate, remove the file or set gate: hook')
 
 
-def fetch_failed(source):
-    return (f'kit-gate: could not fetch the kit at {TAG} from {source}, which needs read access to that repository '
-            f'with your own git credentials: the standard was NOT checked.')
+def pinned(repo):
+    """The commit the hook file of `repo` pins (026/FR-002)."""
+    return re.search(r'(?m)^KIT_COMMIT=([0-9a-f]{40})$', (repo / HOOK_FILE).read_text(encoding='utf-8')).group(1)
+
+
+def fetch_failed(source, repo):
+    """The refusal line of 010/FR-008 as 026 modifies it."""
+    return (f'kit-gate: could not fetch the kit {TAG} at commit {pinned(repo)} from {source}, which needs read access '
+            f'to that repository with your own git credentials: the standard was NOT checked.')
 
 
 def pinned_elsewhere(tag):
@@ -53,14 +60,29 @@ def pinned_elsewhere(tag):
             f'`kit_scaffold.py --repo . --gate`')
 
 
+def git_usr_bin():
+    """Git for Windows' usr/bin, found above git.exe, which is in cmd/ or in mingw64/bin/ depending on the install."""
+    for folder in Path(shutil.which('git')).resolve().parents:
+        if (folder / 'usr' / 'bin' / 'sh.exe').is_file():
+            return folder / 'usr' / 'bin'
+    raise AssertionError('no usr/bin/sh.exe above ' + shutil.which('git'))
+
+
+def git_exec_path():
+    return subprocess.run(['git', '--exec-path'], capture_output=True, text=True, encoding='utf-8',
+                          check=True).stdout.strip()
+
+
+GIT_USR_BIN = git_usr_bin() if WINDOWS else None
+
+
 def find_shells():
     """`sh`, and `dash` where it is found: on the PATH, or below the directory of Git for Windows."""
     found = {name: shutil.which(name) for name in ('sh', 'dash')}
     if WINDOWS:
-        bin_dir = Path(shutil.which('git')).resolve().parent.parent / 'usr' / 'bin'
         for name in found:
-            if not found[name] and (bin_dir / f'{name}.exe').is_file():
-                found[name] = str(bin_dir / f'{name}.exe')
+            if not found[name] and (GIT_USR_BIN / f'{name}.exe').is_file():
+                found[name] = str(GIT_USR_BIN / f'{name}.exe')
     assert found['sh'], 'no sh: the hook is run by sh on every system'
     return [found['sh']] + ([found['dash']] if found['dash'] else [])
 
@@ -71,9 +93,12 @@ by_each_shell = pytest.mark.parametrize('shell', SHELLS, ids=['sh', 'dash'][:len
 
 
 def real_program(name):
-    """The full path of a POSIX utility the hook starts, as the sh of this system reads it."""
+    """The full path of a POSIX utility the hook starts, as the sh of this system reads it.
+
+    On Windows it is Git's usr/bin, not the directory of `sh`: that can be Git's bin, which holds no utility.
+    """
     if WINDOWS:
-        return (Path(SHELLS[0]).parent / f'{name}.exe').as_posix()
+        return (GIT_USR_BIN / f'{name}.exe').as_posix()
     return shutil.which(name)
 
 
@@ -88,7 +113,8 @@ def make_path(folder, pythons=('python3', 'python'), **scripts):
 
     On Windows the Python of the hook starts `git` as Windows starts a program, which finds no script and
     no link this account may make: the directory git.exe is installed in stands beside it, holding no
-    Python and none of the utilities, as in 008's `only_git`.
+    Python and none of the utilities, as in 008's `only_git`. That is the git of `git --exec-path`, never the
+    launcher in Git's bin/: an sh of Git reads that directory as /bin, its own usr/bin, and finds no git there.
     """
     folder.mkdir()
     for name in ('mkdir', 'mv', 'rm'):
@@ -100,7 +126,7 @@ def make_path(folder, pythons=('python3', 'python'), **scripts):
     if not WINDOWS:
         script(folder, 'git', f'exec "{shutil.which("git")}" "$@"')
         return str(folder)
-    installed = Path(shutil.which('git')).parent
+    installed = Path(git_exec_path()).parent.parent / 'bin'
     held = {p.stem.lower() for p in installed.iterdir()}
     assert not [n for n in held if n.startswith('python') or n in ('mkdir', 'mv', 'rm')], held
     return os.pathsep.join([str(folder), str(installed)])
@@ -186,11 +212,11 @@ def make_h(repo, k):
     make_p(repo)
     add_key(repo, 'gate: hook')
     (repo / WORKFLOW_FILE).unlink()
+    git(repo, 'config', 'kit.gateSource', k.as_posix())      # before the scaffold: it reads the commit there
     r = run(SCAFFOLD, '--repo', repo, '--gate')
     assert r.returncode == 0, r.stdout + r.stderr
     git(repo, 'add', '--chmod=+x', HOOK_FILE)
     commit(repo)
-    git(repo, 'config', 'kit.gateSource', k.as_posix())
     assert git(repo, 'status', '--porcelain') == ''
     return repo
 
@@ -227,7 +253,7 @@ def p(tmp_path):
 
 
 def cache(repo):
-    return repo / '.git' / 'kit-gate' / TAG
+    return repo / '.git' / 'kit-gate' / pinned(repo)
 
 
 def bad_spec(repo):
@@ -298,7 +324,8 @@ def test_s14_under_the_hook_asks_that_the_index_holds_it_executable(h, tmp_path)
 
 def test_a_project_holds_one_gate(h, p):
     """010/FR-004, SC-004."""
-    write_lf(h / WORKFLOW_FILE, WORKFLOW_TEMPLATE.read_text(encoding='utf-8').replace('{{KIT_REF}}', TAG))
+    write_lf(h / WORKFLOW_FILE, WORKFLOW_TEMPLATE.read_text(encoding='utf-8').replace('{{KIT_REF}}', TAG)
+             .replace('{{KIT_COMMIT}}', '0' * 40))
     assert '  GAP  S14 ' + BOTH_WORKFLOW in doctor(h).splitlines()
     write_lf(p / HOOK_FILE, (h / HOOK_FILE).read_bytes().decode('utf-8'))
     assert '  GAP  S14 ' + BOTH_HOOK in doctor(p).splitlines()
@@ -330,7 +357,7 @@ def test_a_push_from_a_worktree_or_a_subdirectory_is_judged_where_it_was_made(sh
     assert named == [h / '.git' / 'kit-gate'], named
     rows = HOOK.read_text(encoding='utf-8').splitlines()
     unset = rows.index('unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX')
-    assert not [r for r in rows[:unset] if r.strip() and not r.startswith('#') and not r.startswith('KIT_REF=')]
+    assert not [r for r in rows[:unset] if r.strip() and not r.startswith('#') and not r.startswith(('KIT_REF=', 'KIT_COMMIT='))]
 
 
 def test_the_hook_is_plain_sh():
@@ -377,7 +404,7 @@ def test_the_hook_fetches_the_kit_once_per_version_into_the_git_directory(shell,
     r = hook(shell, h, path)
     verdict = 'kit-gate: passed: ' + stamp(h)
     assert r.code == 0 and r.verdicts == [verdict], r
-    assert [e.name for e in (h / '.git' / 'kit-gate').iterdir()] == [TAG]
+    assert [e.name for e in (h / '.git' / 'kit-gate').iterdir()] == [pinned(h)]
     plugin = cache(h) / 'plugins' / 'francis-kit' / '.claude-plugin' / 'plugin.json'
     assert json.loads(plugin.read_text(encoding='utf-8'))['version'] == VERSION
     assert git(h, 'status', '--porcelain') == ''
@@ -389,13 +416,13 @@ def test_the_hook_fetches_the_kit_once_per_version_into_the_git_directory(shell,
     plugin.unlink()
     r = hook(shell, h, path)
     assert r.code == 0 and plugin.is_file(), r
-    assert [e.name for e in (h / '.git' / 'kit-gate').iterdir()] == [TAG]
+    assert [e.name for e in (h / '.git' / 'kit-gate').iterdir()] == [pinned(h)]
     data = json.loads(plugin.read_text(encoding='utf-8'))
     write_lf(plugin, json.dumps(dict(data, version='0.0.0')))
     r = hook(shell, h, path)
     assert r.code == 0 and r.verdicts == [verdict], r
     assert json.loads(plugin.read_text(encoding='utf-8'))['version'] == VERSION
-    assert [e.name for e in (h / '.git' / 'kit-gate').iterdir()] == [TAG]
+    assert [e.name for e in (h / '.git' / 'kit-gate').iterdir()] == [pinned(h)]
     text = HOOK.read_text(encoding='utf-8')
     for words in ('GIT_TERMINAL_PROMPT=0', 'advice.detachedHead=false', 'kit.gateSource', DEFAULT_SOURCE):
         assert words in text, words
@@ -426,15 +453,15 @@ def test_the_hook_refuses_where_it_cannot_check(shell, h, h_empty, tmp_path, k):
     path = make_path(tmp_path / 'bin')
     nowhere = (tmp_path / 'no-such-kit').as_posix()
     git(h_empty, 'config', 'kit.gateSource', nowhere)
-    refused(hook(shell, h_empty, path, stdin=pushed), fetch_failed(nowhere))
-    assert TAG in fetch_failed(nowhere) and not list((h_empty / '.git' / 'kit-gate').iterdir())
+    refused(hook(shell, h_empty, path, stdin=pushed), fetch_failed(nowhere, h_empty))
+    assert TAG in fetch_failed(nowhere, h_empty) and not list((h_empty / '.git' / 'kit-gate').iterdir())
     untagged = tmp_path / 'untagged'
     shutil.copytree(REPO / 'plugins' / 'francis-kit' / '.claude-plugin', untagged / 'plugins' / 'francis-kit' / '.claude-plugin')
     start_repo(untagged)
     commit(untagged)
     other = bare_from(untagged, tmp_path / 'untagged.git')
     git(h_empty, 'config', 'kit.gateSource', other.as_posix())
-    refused(hook(shell, h_empty, path, stdin=pushed), fetch_failed(other.as_posix()))
+    refused(hook(shell, h_empty, path, stdin=pushed), fetch_failed(other.as_posix(), h_empty))
     assert not list((h_empty / '.git' / 'kit-gate').iterdir())
 
 

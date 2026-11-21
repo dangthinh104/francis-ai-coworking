@@ -126,7 +126,7 @@ def test_an_empty_input_is_never_refused_where_the_hook_cannot_check(shell, h, h
         r = hook(shell, h, no_python, stdin=stdin)
         assert (r.code, r.out, r.err.splitlines()) == (codes[0], '', [NO_PYTHON]), r
         r = hook(shell, h_empty, path, stdin=stdin.replace(head(h), head(h_empty)))
-        assert (r.code, r.out, r.err.splitlines()) == (codes[1], '', [fetch_failed(nowhere)]), r
+        assert (r.code, r.out, r.err.splitlines()) == (codes[1], '', [fetch_failed(nowhere, h_empty)]), r
         r = hook(shell, h, path, stdin=stdin)
         assert r.code == codes[2] and not r.starting('kit-gate: nothing') and not r.starting('kit-gate: pushed'), r
 

@@ -29,7 +29,7 @@ def text():
 
 
 def job():
-    return yaml.safe_load(text().replace('{{KIT_REF}}', 'v0.0.0'))['jobs']['standard']
+    return yaml.safe_load(text().replace('{{KIT_REF}}', 'v0.0.0').replace('{{KIT_COMMIT}}', '0' * 40))['jobs']['standard']
 
 
 def step(name):
@@ -81,7 +81,7 @@ def test_the_runner_comes_from_the_variable_and_forks_start_no_gate():
     assert standard['runs-on'] == RUNS_ON
     assert standard['if'] == JOB_IF
     assert 'vars' not in standard['if']
-    assert 'defaults' not in set(keys(yaml.safe_load(text().replace('{{KIT_REF}}', 'v0.0.0'))))
+    assert 'defaults' not in set(keys(yaml.safe_load(text().replace('{{KIT_REF}}', 'v0.0.0').replace('{{KIT_COMMIT}}', '0' * 40))))
     assert standard['timeout-minutes'] == 5
 
 
@@ -311,7 +311,7 @@ def detect_warnings(repo):
 
 def test_detect_names_the_variable_where_every_workflow_runs_on_the_projects_own_runner(tmp_path):
     """009/FR-010, SC-012."""
-    gate = text().replace('{{KIT_REF}}', 'v' + VERSION)
+    gate = text().replace('{{KIT_REF}}', 'v' + VERSION).replace('{{KIT_COMMIT}}', '0' * 40)
     for runs_on, own in (('[self-hosted, vm]', True), ('ubuntu-latest', False)):
         repo = tmp_path / runs_on.strip('[]').replace(', ', '-')
         repo.mkdir()

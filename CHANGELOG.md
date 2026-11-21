@@ -4,6 +4,14 @@ What changes for a project that uses the kit, newest first. Each version says wh
 
 A project moves to a version by writing its gate again with that version's scaffold: `kit_scaffold.py --repo . --gate`. Until it does, the doctor reports S14 as a gap. Tags in this repository never move: a fix is a new version.
 
+## 0.18.0
+
+New:
+- **The gate pins a commit.** Both gate templates name the commit of the kit's tag and keep the tag beside it: `ref: <commit>  # v<version>` in the workflow, `KIT_COMMIT=` beside `KIT_REF=` in the hook. A tag moved later no longer changes what a gate runs. Writing a gate now reads the kit's repository over the network (`git ls-remote`, 60 seconds at most), and writes nothing when it cannot.
+
+Can turn red when you move:
+- **S14 reports `does not pin the kit to a commit and its tag`** for a gate that pins a tag. Write the gate again with `kit_scaffold.py --repo . --gate`.
+
 ## 0.17.0
 
 New:

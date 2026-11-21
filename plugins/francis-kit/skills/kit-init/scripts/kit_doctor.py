@@ -64,7 +64,9 @@ NAMED_RULES = {'S04', 'S05', 'S06', 'S07', 'S08', 'S09', 'S11', 'S18', 'S19'}   
 NAMES_KEY = {'S18': 'names', 'S19': 'names'}       # what is named is not always a feature
 PROJECT_KEYS = {'name', 'root', 'setup', 'test', 'lint', 'ci_only', 'tracker', 'release', 'deviations', 'interface', 'audit'}
 COMMON = Path(__file__).resolve().parent.parent / 'templates' / 'common'
-GATE_REF = re.compile(r'^[ \t]*ref:[ \t]*(v\d+\.\d+\.\d+)[ \t]*$', re.M)
+# The kit's checkout is pinned to a commit, with its tag in a comment (026/FR-004).
+GATE_REF = re.compile(r'^[ \t]*ref:[ \t]*([0-9a-f]{40})[ \t]+#[ \t]*(v\d+\.\d+\.\d+)[ \t]*$', re.M)
+GATE_REF_LINE = re.compile(r'^[ \t]*ref:', re.M)
 TEMPLATES = {'VOICE.md': Path(__file__).resolve().parents[2] / 'ui-copy' / 'templates' / 'VOICE.md',
              'DESIGN.md': Path(__file__).resolve().parents[2] / 'design-direction' / 'templates' / 'DESIGN.md'}
 TOP_KEYS = {'version', 'projects', 'deviations', 'scratch', 'gate'}
@@ -72,6 +74,8 @@ GATES = ('workflow', 'hook')
 HOOK_FILE = '.githooks/pre-push'
 WORKFLOW_FILE = '.github/workflows/kit-gate.yml'
 HOOK_REF = re.compile(r'^KIT_REF=(v\d+\.\d+\.\d+)$', re.M)
+HOOK_COMMIT = re.compile(r'^KIT_COMMIT=([0-9a-f]{40})$', re.M)
+HOOK_COMMIT_LINE = re.compile(r'^KIT_COMMIT=', re.M)
 KITS_HOOK = re.compile(r'^KIT_REF=', re.M)
 # A project with none of these tracked has no dependency to audit.
 DEPENDENCY_FILES = ('requirements*.txt', 'requirements/*.txt', 'pyproject.toml', 'setup.py', 'setup.cfg', 'Pipfile',
@@ -1279,13 +1283,23 @@ def version_of(tag):
 
 def judge_gate_file(text, template, name, key, path):
     """The first of the four gaps of a gate file against its template, or None (010/FR-002)."""
-    pins = HOOK_REF.findall(text) if key == 'KIT_REF=' else GATE_REF.findall(text)[:1]
+    if key == 'KIT_REF=':
+        tags, commits = HOOK_REF.findall(text), HOOK_COMMIT.findall(text)
+        whole = (len(tags) == 1 and len(KITS_HOOK.findall(text)) == 1 and len(commits) == 1
+                 and len(HOOK_COMMIT_LINE.findall(text)) == 1)
+        pins = [(tags[0], commits[0])] if whole else []
+        unpinned = ('pre-push does not pin the kit to a commit and its tag (KIT_REF=v1.2.3 and '
+                    'KIT_COMMIT=<40-hex commit>): write it again with kit_scaffold.py --repo . --gate')
+    else:
+        found = GATE_REF.findall(text)
+        pins = [(tag, commit) for commit, tag in found] if len(found) == len(GATE_REF_LINE.findall(text)) == 1 else []
+        unpinned = ('kit-gate.yml does not pin the kit to a commit and its tag (ref: <40-hex commit>  # v1.2.3): '
+                    'write it again with kit_scaffold.py --repo . --gate')
     if not text.strip():
         return f'{path} is missing or empty'
     if len(pins) != 1:
-        example = '`KIT_REF=v1.2.3`' if key == 'KIT_REF=' else '`ref: v1.2.3`'
-        return f'{name} does not pin the kit to a tag ({example})'
-    pin, kit = pins[0], kit_ref()
+        return unpinned
+    (pin, commit), kit = pins[0], kit_ref()
     if pin != kit:
         # The same body with another ref would run another version's scripts inside this file.
         # Only this kit's template is here, so the gate is not judged, only which side has to move.
@@ -1301,7 +1315,8 @@ def judge_gate_file(text, template, name, key, path):
                     f'take it back to {kit}')
         return (f'{name} pins {pin} and this kit is {kit}: the gate is judged by '
                 f'the version it pins. Move with `kit_scaffold.py --repo . --gate`')
-    if text.strip() != (read(COMMON / template) or '').replace('{{KIT_REF}}', pins[0]).strip():
+    fresh = (read(COMMON / template) or '').replace('{{KIT_REF}}', pin).replace('{{KIT_COMMIT}}', commit)
+    if text.strip() != fresh.strip():
         # The rules and the start of kit_gate.py live in this file, not behind the pin:
         # raising the pin alone runs a new kit inside an old file.
         return (f'{name} is not the gate of this kit version: write it again with '

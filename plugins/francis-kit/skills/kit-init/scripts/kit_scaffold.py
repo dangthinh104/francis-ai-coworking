@@ -11,6 +11,9 @@ the one the manifest names: .github/workflows/kit-gate.yml, or .githooks/pre-pus
 under `gate: hook`. With a manifest there, PyYAML is needed to read which.
 --gate-at is where the person answered the gate runs: its gate file is written,
 and a manifest without the key `gate` gets the one line that names it.
+Every run that writes or keeps a gate file, --dry-run included, first reads the commit of
+the kit's tag with `git ls-remote` from kit.gateSource or the kit's repository, and writes
+nothing when it cannot: the gate pins that commit, its tag beside it (spec 026).
 The files it edits are .claude/settings.json, where it adds the kit keys
 that are absent and keeps everything else, including a plugin the user turned
 off, and that one line of .claude/kit.yml. It does not write the map: that is
@@ -24,6 +27,8 @@ import json
 import os
 import re
 import shutil
+import signal
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -40,6 +45,8 @@ PROFILES = ['laravel-vue', 'python', 'generic']
 ANSWERS = {'hosted': 'workflow', 'runner': 'workflow', 'hook': 'hook', 'none': None}
 # What keeps the printed gh line from pasting as it is, or turns one label into two.
 NOT_IN_A_LABEL = re.compile('[ \t\'",]')
+DEFAULT_SOURCE = 'https://github.com/dangthinh104/francis-ai-coworking.git'
+LS_REMOTE_SECONDS = 60
 NOTHING_SET = ('the kit sets nothing on GitHub: run it once in a POSIX shell (Git Bash on Windows), signed in as '
                "someone who may change the repository's variables")
 
@@ -61,6 +68,68 @@ def kit_ref():
     if not isinstance(version, str) or not re.fullmatch(r'\d+\.\d+\.\d+', version):
         return None
     return f'v{version}'
+
+
+def git_config(repo, key):
+    """What `git config --get <key>` prints in `repo`, or '' (also where git is missing)."""
+    try:
+        r = subprocess.run(['git', 'config', '--get', key], cwd=repo, capture_output=True, text=True,
+                           encoding='utf-8', errors='replace')
+    except OSError:
+        return ''
+    return r.stdout.strip() if r.returncode == 0 else ''
+
+
+def shown_source(source):
+    """The source as the hook prints it: the `user:pass@` of a URL taken out (010/FR-008)."""
+    if '://' not in source:
+        return source
+    scheme, rest = source.split('://', 1)
+    host, slash, path = rest.partition('/')
+    return f'{scheme}://{host.rpartition("@")[2]}{slash}{path}'
+
+
+def kit_commit(repo, tag):
+    """(the source, the commit of `tag` there, None) or (the source, None, why) (026/FR-003).
+
+    The person's own credentials, no prompt: GIT_TERMINAL_PROMPT=0, ssh in batch mode unless the person set
+    their own ssh command, and LS_REMOTE_SECONDS at most. Output goes to files, not pipes: an ssh that git
+    started could hold a pipe open after git is stopped.
+    """
+    source = git_config(repo, 'kit.gateSource') or DEFAULT_SOURCE
+    env = dict(os.environ, GIT_TERMINAL_PROMPT='0')
+    if not {'GIT_SSH_COMMAND', 'GIT_SSH'} & set(env) and not git_config(repo, 'core.sshCommand'):
+        env['GIT_SSH_COMMAND'] = 'ssh -o BatchMode=yes'
+    pattern = f'refs/tags/{tag}'
+    posix = os.name == 'posix'
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        try:
+            proc = subprocess.Popen(['git', 'ls-remote', source, pattern, pattern + '^{}'], cwd=repo, env=env,
+                                    stdin=subprocess.DEVNULL, stdout=out, stderr=err, start_new_session=posix)
+        except OSError as exc:
+            return source, None, f'git could not be started ({exc})'
+        try:
+            code = proc.wait(timeout=LS_REMOTE_SECONDS)
+        except subprocess.TimeoutExpired:
+            if posix:
+                os.killpg(proc.pid, signal.SIGKILL)
+            else:   # git's helper (git-remote-https, ssh) is a child of git: stop the tree
+                subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)], capture_output=True)
+                proc.kill()
+            proc.wait()
+            return source, None, f'timed out after {LS_REMOTE_SECONDS} seconds'
+        out.seek(0)
+        err.seek(0)
+        lines = out.read().decode('utf-8', 'replace').splitlines()
+        said = [l.strip() for l in err.read().decode('utf-8', 'replace').splitlines() if l.strip()]
+    if code != 0:
+        fatal = [l[len('fatal:'):].strip() for l in said if l.startswith('fatal:')]
+        return source, None, ((fatal or said)[0].rstrip('.') if said else f'git exited {code}')
+    found = dict(reversed(l.split('\t', 1)) for l in lines if '\t' in l)
+    commit = found.get(pattern + '^{}') or found.get(pattern)
+    if not commit or not re.fullmatch(r'[0-9a-f]{40}', commit):
+        return source, None, f'no tag {tag}'
+    return source, commit, None
 
 
 def gate_of(repo):
@@ -278,6 +347,13 @@ def scaffold(args):
         print(f'ERROR   {gate_target.relative_to(repo).as_posix()} is a symlink, which is not written through. '
               f'Replace it with a file.')
         return 1
+    if gate is not None:
+        source, commit, why = kit_commit(repo, ref)
+        if commit is None:
+            print(f'ERROR   could not read the commit of {ref} from {shown_source(source)}: {why}. '
+                  f'Nothing was written.')
+            return 1
+        fills['{{KIT_COMMIT}}'] = commit
     if not (repo / '.git').exists():
         print('note: --repo has no .git; .claude/ and .github/ belong at the git root')
     print(f'profile: {profile}')
