@@ -1,10 +1,11 @@
 #!/bin/sh
-# The francis-kit gate, run by git before each push: kit_gate.py of the kit at KIT_REF.
+# The francis-kit gate, run by git before each push: kit_gate.py of the kit KIT_REF, fetched at that commit, KIT_COMMIT.
 # Switch it on once per clone: git config core.hooksPath .githooks
-# The kit is fetched once per version, with your own git access, into <git common dir>/kit-gate.
+# The kit is fetched once per commit, with your own git access, into <git common dir>/kit-gate.
 # It fails closed: a push it cannot check is refused. It needs Python 3.9 or newer with PyYAML
 # on the PATH of the git client that pushes. A push that sends nothing is checked, never refused.
 KIT_REF={{KIT_REF}}
+KIT_COMMIT={{KIT_COMMIT}}
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
 # Git hands the hook the remote's name and location; a hand run gives no argument.
 by_git=
@@ -60,14 +61,15 @@ there() {
 
 common=$(git rev-parse --git-common-dir 2>/dev/null)
 home="$common/kit-gate"
-kit="$home/$KIT_REF"
+kit="$home/$KIT_COMMIT"
 if [ -z "$common" ] || ! there "$kit"; then
   from=$(git config --get kit.gateSource 2>/dev/null)
   [ -n "$from" ] || from=https://github.com/dangthinh104/francis-ai-coworking.git
-  fetch="$home/.fetch-$KIT_REF-$$"
+  fetch="$home/.fetch-$KIT_COMMIT-$$"
   # The clone's own .git is dropped: the source may carry a credential in its URL.
   if [ -n "$common" ] && mkdir -p "$home" && rm -rf "$fetch" &&
-    GIT_TERMINAL_PROMPT=0 git -c advice.detachedHead=false clone -q --branch "$KIT_REF" "$from" "$fetch" >/dev/null 2>&1; then
+    GIT_TERMINAL_PROMPT=0 git clone -q --no-checkout "$from" "$fetch" >/dev/null 2>&1 &&
+    git -C "$fetch" -c advice.detachedHead=false checkout -q "$KIT_COMMIT" >/dev/null 2>&1 && there "$fetch"; then
     rm -rf "$fetch/.git" "$kit" && mv "$fetch" "$kit"
   fi
   rm -rf "$fetch"
@@ -80,7 +82,7 @@ if [ -z "$common" ] || ! there "$kit"; then
         shown="${from%%://*}://${host##*@}${rest#"$host"}"
         ;;
     esac
-    printf '%s\n' "kit-gate: could not fetch the kit at $KIT_REF from $shown, which needs read access to that repository with your own git credentials: the standard was NOT checked." >&2
+    printf '%s\n' "kit-gate: could not fetch the kit $KIT_REF at commit $KIT_COMMIT from $shown, which needs read access to that repository with your own git credentials: the standard was NOT checked." >&2
     refuse 1
   fi
 fi

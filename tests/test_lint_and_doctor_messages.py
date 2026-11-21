@@ -70,8 +70,8 @@ def s14(r):
 def pin_workflow(repo, pin):
     path = repo / WORKFLOW_FILE
     text = path.read_text(encoding='utf-8')
-    pinned = re.sub(r'(?m)^(\s*ref: )v\d+\.\d+\.\d+$', lambda m: m.group(1) + pin, text)
-    assert pinned != text or f'ref: {pin}' in text
+    pinned = re.sub(r'(?m)^(\s*ref: [0-9a-f]{40}  # )v\d+\.\d+\.\d+$', lambda m: m.group(1) + pin, text)
+    assert pinned != text or f'# {pin}' in text
     write(path, pinned)
     commit(repo)
 
@@ -152,7 +152,10 @@ def test_sc004_the_gate_of_the_pinned_kit_passes_s14(p, tmp_path):
             tar.extractall(kit, filter='data')
         else:
             tar.extractall(kit)
-    pin_workflow(p, 'v0.13.0')
+    # A project that pins v0.13.0 holds the gate of v0.13.0, which pinned a tag (before 026).
+    old = (kit / 'plugins' / 'francis-kit' / 'skills' / 'kit-init' / 'templates' / 'common' / 'kit-gate.yml')
+    write(p / WORKFLOW_FILE, old.read_text(encoding='utf-8').replace('{{KIT_REF}}', 'v0.13.0'))
+    commit(p)
     r = gate(p, script=kit / 'plugins' / 'francis-kit' / 'skills' / 'kit-init' / 'scripts' / 'kit_gate.py')
     assert r.code == 0 and '  PASS S14 (the gate)' in r.lines, r.lines
 

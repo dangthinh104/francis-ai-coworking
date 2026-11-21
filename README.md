@@ -18,6 +18,15 @@ It relies on three things it does not ship:
 - [Spec Kit](https://github.com/github/spec-kit), whose commands write `plan.md` and `tasks.md`.
 - Python 3.9 or newer, with git and PyYAML, for the scripts.
 
+### Spec Kit and OpenSpec
+
+The kit's living spec works like that of [OpenSpec](https://github.com/Fission-AI/OpenSpec). A feature lists what it adds, modifies and removes, and closing the feature merges that into `specs/_living/<capability>/spec.md`, the description of what the system does today. OpenSpec does the same with the delta specs of a change folder, merged when the change is archived. Anyone who knows OpenSpec will recognise the model.
+
+The kit does not use OpenSpec for two reasons:
+
+- It was built on Spec Kit, whose commands already write the plan and the tasks and build from them. The delta sections are a convention inside a Spec Kit feature, not a second tool.
+- Its value is the checks, not the spec format: the doctor's rules S01 to S19, the audit of `CLAUDE.md` against what git once held, the check that a project's tests run on pull requests, and the gate that runs them on every pull request or push. Those would work the same with another spec tool underneath.
+
 One more skill is optional: [archify](https://github.com/tt-a1i/archify), which draws a project's diagrams for `map-project`. Install it on its own. Without it, a session asked for a diagram says so and stops. Checking a diagram (`cite_refs.py`) needs only the kit.
 
 ## Install
@@ -122,11 +131,13 @@ A project chooses one gate, and the scaffold writes it:
 - **A workflow** (`.github/workflows/kit-gate.yml`), on GitHub-hosted runners or on a runner of the project's own.
 - **A `pre-push` hook** (`.githooks/pre-push`), for a project where no runner can run it.
 
-Both check out this repository at the tag of the kit version that wrote them, and run `kit_gate.py`. A project moves to a newer kit by running `kit_scaffold.py --repo . --gate` again with that version. The doctor reports a gate that pins an older kit as a gap until it moves.
+Both check out this repository at the commit of the tag of the kit version that wrote them, and run `kit_gate.py`. The file names the commit and keeps the tag beside it: `ref: <commit>  # v<version>`, or `KIT_COMMIT=` beside `KIT_REF=` in the hook. A project moves to a newer kit by running `kit_scaffold.py --repo . --gate` again with that version. The doctor reports a gate that pins an older kit as a gap until it moves.
 
 Neither gate needs a secret: the kit is public. The workflow does not start on pull requests from a fork or from Dependabot.
 
-The gate checks out the kit by its tag. A tag can be moved, so the tags of this repository are never moved: a fix is a new version.
+The gate runs the kit at the commit its file names, so a tag moved later does not change what it runs. The version beside the commit is checked by the gate itself: the doctor it runs is the kit at that commit, and it reports a pin whose version is not its own. The tags of this repository are still never moved: a fix is a new version.
+
+Writing a gate reads the source over the network, with read access to it: the scaffold runs `git ls-remote` on this repository, or on what `git config kit.gateSource` names, with no prompt and 60 seconds at most, and writes nothing when it cannot read the commit of the tag. A cache of the hook named by a tag (`.git/kit-gate/v<version>`, before 0.18.0) is no longer used and may be deleted.
 
 When a project moves to a newer kit, it writes its gate again before it records a second deviation on a rule. The gate runs the doctor of the version it pins, and an older doctor reports that entry as listed twice.
 

@@ -328,7 +328,7 @@ def test_the_gate_template_starts_the_checks_by_one_step(tmp_path):
     assert not [l for l in rows if SIX.search(l)]
     assert not [l for l in rows if '.kit-roots' in l or '.kit-lint' in l]
     assert len([l for l in rows if 'kit_gate.py' in l]) == 1
-    job = yaml.safe_load(template.replace('{{KIT_REF}}', 'v0.0.0'))['jobs']['standard']
+    job = yaml.safe_load(template.replace('{{KIT_REF}}', 'v0.0.0').replace('{{KIT_COMMIT}}', '0' * 40))['jobs']['standard']
     standard = [s for s in job['steps'] if s.get('name') == 'Standard']
     assert len(standard) == 1 and 'if' not in standard[0]
     assert standard[0]['run'].splitlines() == ['python ../kit/plugins/francis-kit/skills/kit-init/scripts/kit_gate.py --repo .']
