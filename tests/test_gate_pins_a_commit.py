@@ -1,6 +1,8 @@
 """The gate pins the kit to a commit, with its tag beside it (spec 026)."""
+import os
 import re
 import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -204,7 +206,8 @@ def test_the_hook_fetches_and_caches_the_pinned_commit(shell, tmp_path, k):
     git(work, 'tag', '-f', TAG)
     git(work, 'push', '-q', '-f', 'origin', f'refs/tags/{TAG}')
     assert tag_commit(k) != c
-    shutil.rmtree(k)
+    # Git keeps its objects read-only, which Windows will not delete as they are.
+    shutil.rmtree(k, onerror=lambda f, path_, _: (os.chmod(path_, stat.S_IWRITE), f(path_)))
     r = hook(shell, repo, path)
     assert r.code == 0, r
     assert [d.name for d in (repo / '.git' / 'kit-gate').iterdir()] == [c]
@@ -306,9 +309,22 @@ def test_the_documents_say_what_the_gate_pins():
         for words in ('New gates pin the commit of `v<version>`', 'the tag has to be pushed before a gate can be '
                       'written', 'The gate fetches the kit by the commit of its tag'):
             assert words in steps, words
-    for changelog, heading in (('CHANGELOG.md', '## Unreleased'), ('tools/public/CHANGELOG.md', '## 0.18.0')):
+    for changelog in ('CHANGELOG.md', 'tools/public/CHANGELOG.md'):
         path = root / changelog
-        if path.is_file() and heading in path.read_text(encoding='utf-8'):
-            section = path.read_text(encoding='utf-8').split(heading, 1)[1].split('\n## ', 1)[0]
-            assert 'pin' in section and 'commit' in section and 'gate again' in section \
-                and 'network' in section, changelog
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding='utf-8')
+        # The private line is `- Spec 026: ...` under Unreleased or, once released, under its version.
+        lines = [l for l in text.splitlines() if l.startswith('- Spec 026:') or l.startswith('- **The gate pins a commit.**')]
+        assert len(lines) == 1, changelog
+        assert 'commit' in lines[0] and 'gate again' in text and 'network' in lines[0], changelog
+
+
+def test_a_credential_git_echoes_in_its_reason_is_taken_out():
+    """026/FR-003: git for Windows repeats the URL's path, with its `user:pass@`, in its error."""
+    sys.path.insert(0, str(Path(SCAFFOLD).parent))
+    import kit_scaffold
+    said = "'//someone:secret@/no/such/kit.git' does not appear to be a git repository"
+    clean = kit_scaffold.without_credential(said, 'file://someone:secret@/no/such/kit.git')
+    assert 'secret' not in clean and 'someone' not in clean and '/no/such/kit.git' in clean
+    assert kit_scaffold.without_credential(said, '/no/such/kit.git') == said

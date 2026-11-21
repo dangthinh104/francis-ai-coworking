@@ -89,6 +89,15 @@ def shown_source(source):
     return f'{scheme}://{host.rpartition("@")[2]}{slash}{path}'
 
 
+def without_credential(text, source):
+    """`text` with the `user:pass@` of `source` taken out, wherever git echoed it (on Windows, in its error)."""
+    if '://' in source:
+        host = source.split('://', 1)[1].partition('/')[0]
+        if '@' in host:
+            text = text.replace(host.rpartition('@')[0] + '@', '')
+    return text
+
+
 def kit_commit(repo, tag):
     """(the source, the commit of `tag` there, None) or (the source, None, why) (026/FR-003).
 
@@ -124,7 +133,8 @@ def kit_commit(repo, tag):
         said = [l.strip() for l in err.read().decode('utf-8', 'replace').splitlines() if l.strip()]
     if code != 0:
         fatal = [l[len('fatal:'):].strip() for l in said if l.startswith('fatal:')]
-        return source, None, ((fatal or said)[0].rstrip('.') if said else f'git exited {code}')
+        why = (fatal or said)[0].rstrip('.') if said else f'git exited {code}'
+        return source, None, without_credential(why, source)
     found = dict(reversed(l.split('\t', 1)) for l in lines if '\t' in l)
     commit = found.get(pattern + '^{}') or found.get(pattern)
     if not commit or not re.fullmatch(r'[0-9a-f]{40}', commit):
