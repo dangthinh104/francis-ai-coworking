@@ -1,6 +1,7 @@
 """What the hook gate guards, and a push that sends nothing is never refused (spec 017)."""
 import pytest
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -14,6 +15,7 @@ GUARD = "guards the author's clone, not the release"
 REFUSES_NOTHING = 'kit-gate: nothing was pushed, so this verdict refuses nothing'
 NOTE = ('  note: the gate is the hook: it guards pushes from the clones that switched it on; '
         'a merge on GitHub and a push from any other clone are not judged')
+COUNTED = re.compile(r', (\d+) notes?$')
 HAND_RUN = 'echo "HEAD $(git rev-parse HEAD) HEAD 0" | sh .githooks/pre-push'
 DOCS = ('plugins/francis-kit/STANDARD.md', 'plugins/francis-kit/skills/kit-init/SKILL.md',
         'plugins/francis-kit/skills/kit-adopt/SKILL.md', 'README.md')
@@ -62,7 +64,10 @@ def test_the_doctor_says_what_the_hook_guards_where_every_merge_is_a_release(h, 
     assert len(deploy_note) == 1 and lines[deploy_note[0] + 1] == NOTE, told.stdout
     assert [l for l in lines if 'the gate is the hook' in l] == [NOTE]
     summary = [[l for l in r.stdout.splitlines() if l.startswith('summary:')] for r in (quiet, told)]
-    assert (told.returncode, summary[1]) == (quiet.returncode, summary[0]) and told.returncode == 0, told.stdout
+    found = [COUNTED.search(s[0]) for s in summary]
+    counted = [(s[0][:m.start()] if m else s[0], int(m.group(1)) if m else 0) for s, m in zip(summary, found)]
+    assert (told.returncode, counted[1][0]) == (quiet.returncode, counted[0][0]) and told.returncode == 0, told.stdout
+    assert counted[1][1] == counted[0][1] + 2, summary          # 029/SC-009: the deploy note and this one
     deploys(p, '[main]')
     out = run(DOCTOR, '--repo', p).stdout
     assert [l for l in out.splitlines() if l.startswith('  note: pull requests target')], out

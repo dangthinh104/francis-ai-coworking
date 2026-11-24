@@ -22,6 +22,9 @@ PATHISH = re.compile(r'^([A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)*/?)(?::(\d+)(?:-(
 FILE_NAME = re.compile(r'^[A-Za-z0-9_\-][A-Za-z0-9_.\-]*\.(?:py|pyi|js|jsx|mjs|ts|tsx|vue|php|go|rs|java|kt|rb|cs|'
                        r'swift|dart|c|h|cpp|sh|ps1|sql|ya?ml|json|toml|md|html|css|scss|xml|txt|ini|cfg|lock)$')
 PIN = re.compile(r'kit:map revision=([0-9a-f]{7,40})')
+MAP_FILES = ('docs/ARCHITECTURE.md', 'docs/diagrams/map.refs.json')     # 023's map and its citation file
+PIN_WORDS = {'.githooks/pre-push': (b'KIT_REF=', b'KIT_COMMIT='), '.github/workflows/kit-gate.yml': (b'ref:',)}
+LINE_END = re.compile(rb'\r?\n?$')
 
 
 def classify(root, token):
@@ -54,6 +57,33 @@ def git(root, *args):
                               encoding='utf-8', errors='replace')
     except OSError:
         return None
+
+
+def blob(root, rev, path):
+    try:
+        r = subprocess.run(['git', '-C', root, 'cat-file', 'blob', f'{rev}:{path}'], capture_output=True)
+    except OSError:
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def without_pins(data, words):
+    """The lines of a blob, each with its line end; a pin line becomes its kind and its line end."""
+    lines = [piece + b'\n' for piece in data.split(b'\n')]
+    lines[-1] = lines[-1][:-1]
+    out = []
+    for line in lines:
+        kind = next((w for w in words if line.lstrip(b' \t').startswith(w)), None)
+        out.append(kind + b'\0' + LINE_END.search(line).group(0) if kind else line)
+    return out
+
+
+def only_pins_changed(root, rev, path):
+    """A gate file whose blobs at the pin and at HEAD differ only on their pin lines (029/FR-002)."""
+    before, after = blob(root, rev, path), blob(root, 'HEAD', path)
+    if before is None or after is None or before == after:
+        return False
+    return without_pins(before, PIN_WORDS[path]) == without_pins(after, PIN_WORDS[path])
 
 
 def main(argv):
@@ -119,7 +149,10 @@ def main(argv):
         print('pin: MISSING (first line must be <!-- kit:map revision=<sha> -->)')
         return 1
     diff = git(root, 'diff', '--name-only', '--relative', f'{rev}..HEAD', '--', '.')
-    changed = [name for name in (diff.stdout if diff else '').splitlines() if name]
+    changed = [name for name in (diff.stdout if diff else '').splitlines() if name and name not in MAP_FILES]
+    prefix = git(root, 'rev-parse', '--show-prefix')
+    if prefix and prefix.returncode == 0 and not prefix.stdout.strip():      # gate files sit at the git root
+        changed = [c for c in changed if not (c in PIN_WORDS and only_pins_changed(root, rev, c))]
     direct = {c for c in changed if c in cited}
     under = {c for c in changed if c not in direct and any(c.startswith(d + '/') for d in cited)}
     touched = sorted(direct | under)

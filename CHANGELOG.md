@@ -4,6 +4,16 @@ What changes for a project that uses the kit, newest first. Each version says wh
 
 A project moves to a version by writing its gate again with that version's scaffold: `kit_scaffold.py --repo . --gate`. Until it does, the doctor reports S14 as a gap. Tags in this repository never move: a fix is a new version.
 
+## 0.19.0
+
+New:
+- **The doctor says when git does not start the hook.** Under `gate: hook`, in a clone whose `core.hooksPath` is not `.githooks`, the doctor prints a note with the command that switches the hook on (`git config core.hooksPath .githooks`), or, where a hook manager runs the clone's hooks, says to have it start `.githooks/pre-push`. A CI run (`CI=true`) gets no such note.
+- **The doctor's `summary:` line counts its notes**, ending in `, 1 note` or `, <n> notes` when there are any.
+- **`map_check.py` counts fewer files as changed since the pin:** the map, its citation file, and a gate file changed only on its pin lines are left out.
+- **`shrink-claude-md`** prints from the code each count that moves into a new file before it asks anything, and stops when one differs from `CLAUDE.md`.
+
+Nothing turns red: no verdict changes, and the gate template is the one of 0.18.0 except its pin lines. A script that reads the `summary:` line whole may need to allow the count of notes at its end.
+
 ## 0.18.0
 
 New:

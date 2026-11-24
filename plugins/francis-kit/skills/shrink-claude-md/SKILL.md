@@ -50,6 +50,10 @@ Read the whole file, then give each block one verdict in the proposal. Lines are
 - A heading whose section is emptied moves with its section. A heading left over a pointer stays.
 - When the target does not exist it will be created, holding the moved text and nothing else. Do not invent an owner, a description or front matter for it; say in your report that a new skill file needs its front matter from the person who owns the domain.
 
+For each count or measure of the project that a block moving into a target that will be created states, such as how many of a thing there are, a size or a duration, print the value from the code, the repository's files or a read-only source the owner names, never a live or production database, and list for the owner in the message of Step 4 the number written, the number printed and the command, or that nothing can print it; when a verdict changes after `show` into such a move, do the same before `show` runs again.
+
+Where a number printed differs from the number written, stop before Step 4 and show the owner the line, both numbers and the command: where the owner judges the number written right, the run goes on to Step 4 and that message records the judgement; otherwise the owner corrects CLAUDE.md, or has it corrected, in a commit of its own outside this run, and the shrink starts again at Step 1 with a new `--out`, the old proposal kept only to read its verdicts from, since its line ranges may no longer hold.
+
 ## Step 4: the owner confirms the hazards
 
 Ask once, in one message: show the hazard lines `start` printed, with their line numbers, and ask the owner which are hazards, which are not, and which are missing.
@@ -126,3 +130,4 @@ A `LOST` line you accept, such as an approved `delete: history` block the other 
 3. The blocks deleted as history, quoted
 4. The doctor's and the audit's output
 5. Created skill files that still need front matter from their owner
+6. Each created file that holds a count or a measure, with, for each, the line `not the authority on <count>: print it from the code` for whoever writes its front matter

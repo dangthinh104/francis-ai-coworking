@@ -317,7 +317,11 @@ def test_the_documents_say_what_the_gate_pins():
         # The private line is `- Spec 026: ...` under Unreleased or, once released, under its version.
         lines = [l for l in text.splitlines() if l.startswith('- Spec 026:') or l.startswith('- **The gate pins a commit.**')]
         assert len(lines) == 1, changelog
-        assert 'commit' in lines[0] and 'gate again' in text and 'network' in lines[0], changelog
+        assert 'commit' in lines[0] and 'network' in lines[0], changelog
+        # 026/FR-008: the private line says the move too; the public section may say it on a line of its own.
+        section = text[text.index(lines[0]):].split('\n## ', 1)[0]
+        # The public copy holds its public changelog at the root, so the line, not the file name, says which it is.
+        assert 'gate again' in (lines[0] if lines[0].startswith('- Spec 026:') else section), changelog
 
 
 def test_a_credential_git_echoes_in_its_reason_is_taken_out():
