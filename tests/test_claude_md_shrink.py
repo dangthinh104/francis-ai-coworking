@@ -418,7 +418,7 @@ def test_the_skill_stops_for_the_owner_and_pastes_the_doctor(repo):
         assert needed in text, needed
 
 
-# found on the first real run
+# found on the first real run (specs/002, history)
 
 def test_the_skill_measures_the_named_file_with_paths_from_the_git_root():
     """T013: a CLAUDE.md in a subdirectory is measured with --repo at the git root and --project-root its directory."""
@@ -503,7 +503,7 @@ def test_shows_after_is_what_apply_writes_and_names_the_pointer_lines(repo):
     assert int(shown.group(3)) == sum(line.endswith('.md`.') for line in written)
 
 
-# found by a cold review (2026-11-16)
+# found by a cold review (specs/002, history)
 
 @pytest.mark.parametrize('line, underline', [
     ('- Pushing to main deploys to production.', '---'),
@@ -697,3 +697,35 @@ def test_a_proposal_made_on_a_copy_is_applied_to_the_file_named(repo, tmp_path_f
     assert snapshot(copy) == copied and not (copy / '.claude').exists()
     r = run('verify', proposal, '--original', kept, '--file', target)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# 028: a shrink does not move a count into a new file unread
+
+COUNT_CHECK = (
+    'For each count or measure of the project that a block moving into a target that will be created states, such as '
+    'how many of a thing there are, a size or a duration, print the value from the code, the repository\'s files or a '
+    'read-only source the owner names, never a live or production database, and list for the owner in the message of '
+    'Step 4 the number written, the number printed and the command, or that nothing can print it; when a verdict '
+    'changes after `show` into such a move, do the same before `show` runs again.')
+COUNT_STOP = (
+    'Where a number printed differs from the number written, stop before Step 4 and show the owner the line, both '
+    'numbers and the command: where the owner judges the number written right, the run goes on to Step 4 and that '
+    'message records the judgement; otherwise the owner corrects CLAUDE.md, or has it corrected, in a commit of its '
+    'own outside this run, and the shrink starts again at Step 1 with a new `--out`, the old proposal kept only to read '
+    'its verdicts from, since its line ranges may no longer hold.')
+NOT_THE_AUTHORITY = (
+    'Each created file that holds a count or a measure, with, for each, the line `not the authority on <count>: print '
+    'it from the code` for whoever writes its front matter')
+
+
+def test_the_skill_prints_each_count_that_moves_into_a_new_file_and_the_report_says_who_is_not_its_authority():
+    """028/FR-001 to FR-003: each text on one line, the first two in Step 3, the third in the Report list."""
+    lines = SKILL.read_text(encoding='utf-8').splitlines()
+    step3 = lines.index('## Step 3: fill every verdict')
+    step4 = next(n for n, line in enumerate(lines) if line.startswith('## Step 4'))
+    report = lines.index('## Report')
+    for text in (COUNT_CHECK, COUNT_STOP):
+        found = [n for n, line in enumerate(lines) if text in line]
+        assert len(found) == 1 and step3 < found[0] < step4, (text[:40], found)
+    found = [n for n, line in enumerate(lines) if NOT_THE_AUTHORITY in line]
+    assert len(found) == 1 and found[0] > report and re.match(r'\d+\. ', lines[found[0]]), found

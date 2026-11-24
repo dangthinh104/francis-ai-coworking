@@ -39,3 +39,5 @@ The clean-context review (stage 5 of the loop) answers these with file and line,
 5. Which option, parameter or branch is not required by the spec?
 
 A finding of excess is fixed by removing code, not by adding a comment that explains it. More new abstractions than requirements implemented is a finding by itself.
+
+A fix of a finding that changes what the code does in a case a term or a requirement of `spec.md` describes (narrower, wider or new) changes that text in the same pull request, with the owner's answer under Decisions. Left for later, the gap is found only at close, where the owner has to choose a side for code already released.

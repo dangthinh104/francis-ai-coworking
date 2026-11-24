@@ -22,6 +22,7 @@ those a deviation on S04 to S07 or S09 lists; the names left out go to stderr.
 """
 import argparse
 import json
+import os
 import posixpath
 import re
 import subprocess
@@ -814,10 +815,22 @@ _NOTED = set()
 NO_HISTORY = type("NoHistory", (list,), {})()   # the verdict of S18 where git cannot say what it once held
 
 
+NOTES = 0                       # the notes printed, for the count of the summary (029/FR-005)
+
+
 def note(message):
+    global NOTES
     if message not in _NOTED:
         _NOTED.add(message)
         print(f'note: {message}', file=sys.stderr)
+        NOTES += 1
+
+
+def said(line, **kwargs):
+    """A note of `_main`, printed as it stands and counted."""
+    global NOTES
+    print(line, **kwargs)
+    NOTES += 1
 
 
 def judge_claude_md(path, repo, tests, project_roots=(), found_out=None):
@@ -1192,10 +1205,9 @@ def judge_ci(project, here, workflows):
     said += dict.fromkeys(unjudged)
     if near:
         said.append('Not counted: ' + some(dict.fromkeys(near)))
-    # Could read no step (016/FR-006): every step S19 matches, the kit's own gate left out, is not judged
-    # and holds no entry in the lines read, and a place S19 reads, or a file it could not read, is not
-    # judged. Then how an entry is matched is not what is wrong. A workflow that does not count, and
-    # what it leaves unjudged, plays no part.
+    # Could read no step (016/FR-006): every step S19 matches (kit-gate.yml left out) is not judged and
+    # holds no entry in the lines read, and a place in a workflow S19 reads, or a file it could not read,
+    # is not judged; a workflow that does not count, and what it leaves unjudged, plays no part.
     ours = {w['name'] for w, _ in readings} - {'kit-gate.yml'}
     matched = [step for w, _ in readings if w['name'] in ours for step in w['steps']]
     blind = all(step['unread'] and id(step) not in holding for step in matched) and bool(
@@ -1322,6 +1334,41 @@ def judge_gate_file(text, template, name, key, path):
         return (f'{name} is not the gate of this kit version: write it again with '
                 f'`kit_scaffold.py --repo . --gate` (raising `{key}` alone is not enough)')
     return None
+
+
+def same_resolved(a, b):
+    """Two paths resolved, links followed, compared without case on Windows; a link loop is not the same."""
+    try:
+        return os.path.normcase(str(Path(a).resolve())) == os.path.normcase(str(Path(b).resolve()))
+    except (OSError, RuntimeError):
+        return False
+
+
+def note_hook_not_started(repo, data):
+    """Under `gate: hook`, note a clone where git does not start `.githooks/pre-push` (027/FR-001 to 027/FR-003)."""
+    if gate_named(data) != 'hook' or not KITS_HOOK.search(read(repo / HOOK_FILE) or '') \
+            or os.environ.get('CI', '').lower() == 'true':
+        return
+    top = claude_md_audit.git(repo, 'rev-parse', '--show-toplevel')
+    config = claude_md_audit.git(repo, 'config', '--get', 'core.hooksPath')
+    if top is None or top.returncode != 0 or not same_resolved(top.stdout.strip(), repo) \
+            or config is None or config.returncode not in (0, 1):
+        return
+    value = config.stdout[:-1] if config.stdout.endswith('\n') else config.stdout
+    if value and not value.startswith('~') and same_resolved(repo / value, repo / '.githooks'):
+        return
+    shown = value or 'not set'
+    import kit_detect      # kit_detect imports this module: read at the call, not at the top
+    local = claude_md_audit.git(repo, 'config', '--local', '--get', 'core.hooksPath')
+    # 011 reads only the local value; one set globally or for the system runs this person's own hooks.
+    elsewhere = [f'core.hooksPath={value}'] if value and local is not None and local.returncode == 1 else []
+    managers = elsewhere + kit_detect.hook_manager(repo)
+    if managers:
+        note(f"S14: core.hooksPath is {shown}, not .githooks, and this clone's hooks are run by "
+             f"{', '.join(managers)}: have that hook manager start .githooks/pre-push at a push")
+    else:
+        note(f'S14: core.hooksPath is {shown}, not .githooks, so git does not start .githooks/pre-push at a push '
+             f'from this clone: switch it on with git config core.hooksPath .githooks')
 
 
 def hook_in_index(repo):
@@ -1478,7 +1525,7 @@ def main(argv=None):
 
 
 def _main(argv=None):
-    global LIMIT
+    global LIMIT, NOTES
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--repo', type=Path, default=Path('.'), help='git root (default: .)')
     ap.add_argument('--project-root', action='append', default=[],
@@ -1488,6 +1535,7 @@ def _main(argv=None):
     ap.add_argument('--lint-features', metavar='ROOT',
                     help='print the features of that project root for the gate to lint, and exit')
     args = ap.parse_args(argv)
+    NOTES = 0
     if args.roots or args.lint_features is not None:
         try:
             sys.stdout.reconfigure(newline='\n')      # a shell reads these lines, on any system
@@ -1510,7 +1558,7 @@ def _main(argv=None):
         projects = [{'name': Path(r).name or repo.name, 'root': r}
                     for r in (args.project_root or ['.'])]
     elif args.project_root:
-        print('note: --project-root is ignored because .claude/kit.yml lists the projects', file=sys.stderr)
+        said('note: --project-root is ignored because .claude/kit.yml lists the projects', file=sys.stderr)
 
     def root_of(project):
         root = project.get('root')
@@ -1547,7 +1595,7 @@ def _main(argv=None):
     workflows = read_workflows(repo)
     nested = monorepo_dirs(repo) if data is None and not args.project_root else []
     if nested:
-        print(f'note: no code markers at the root but found projects in: {", ".join(nested)}. For a monorepo '
+        said(f'note: no code markers at the root but found projects in: {", ".join(nested)}. For a monorepo '
               f'pass --project-root once per project, or list the projects in .claude/kit.yml.')
     print('repository')
     repo_gaps = check_repo(repo, data)
@@ -1566,7 +1614,8 @@ def _main(argv=None):
     repo_listed, _ = check_deviations((data or {}).get('deviations'), repo_deviation_rules(data, repo), 'repository')
     report(repo_rules, repo_gaps, repo_listed, totals)
     for f in found_under:           # 021/FR-003: S18 is the last rule of the repository, so these stand below it
-        print(f'         note: CLAUDE.md:{f.line} {f.name} is {f.why}')
+        said(f'         note: CLAUDE.md:{f.line} {f.name} is {f.why}')
+    note_hook_not_started(repo, data)
 
     for project in projects:
         print(f"project {project.get('name') or '?'} (root {project.get('root') or '?'})")
@@ -1577,21 +1626,22 @@ def _main(argv=None):
         release = project.get('release') if isinstance(project.get('release'), dict) else {}
         deploys = release.get('deploy_branches') if isinstance(release.get('deploy_branches'), list) else []
         if release.get('pr_target') in deploys:
-            print(f"  note: pull requests target `{release['pr_target']}`, which deploys on push: "
+            said(f"  note: pull requests target `{release['pr_target']}`, which deploys on push: "
                   f'every merge is a release, a docs-only one included')
             if gate_named(data) == 'hook':
-                print('  note: the gate is the hook: it guards pushes from the clones that switched it on; '
+                said('  note: the gate is the hook: it guards pushes from the clones that switched it on; '
                       'a merge on GitHub and a push from any other clone are not judged')
         if project.get('interface') is False:
             seen = screens(root)
             if seen:
-                print(f'  note: interface is false, yet this looks like a project people use through screens '
+                said(f'  note: interface is false, yet this looks like a project people use through screens '
                       f'({seen}). If so, set it to true: S16 then applies')
         listed, _ = check_deviations(project.get('deviations'), PROJECT_RULES, '')
         others = [r for r in map(root_of, projects) if r]
         report(PROJECT_RULES, check_project(root, project, repo, others, workflows), listed, totals)
+    counted = '' if NOTES == 0 else ', 1 note' if NOTES == 1 else f', {NOTES} notes'
     print(f"summary: {totals['PASS']} pass, {totals['GAP']} gap, {totals['DEBT']} debt, "
-          f"{totals['SKIP']} skipped")
+          f"{totals['SKIP']} skipped{counted}")
     if data is None:
         print('provisional: there is no .claude/kit.yml, so the projects judged here are a guess and these '
               'verdicts can change once it lists them')

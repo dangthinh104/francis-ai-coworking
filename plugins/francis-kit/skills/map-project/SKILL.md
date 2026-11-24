@@ -83,7 +83,7 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/cite_refs.py" --diagrams <root>/docs/diagra
 
 All must be green. Reading the output:
 
-- `map_check.py`: `BROKEN` fails. `UNCHECKED` is a path not written from the project root: rewrite it. `REVIEW` lists cited files that changed since the pin: re-read those sections. Right after the first commit the changed count is the map's own files.
+- `map_check.py`: `BROKEN` fails. `UNCHECKED` is a path not written from the project root: rewrite it. `REVIEW` lists cited files that changed since the pin: re-read those sections. Three things are not counted among the files changed since the pin: the map, its citation file, and a gate file (`.githooks/pre-push`, `.github/workflows/kit-gate.yml`) changed only on its pin lines.
 - `cite_refs.py --check` exits 1 for `lost`, `file gone`, `past eof`, `ambiguous`, `weak anchor`, a path outside the repository, a wrong `Name :123`, or when it finds no citation file at all, and prints each failing citation; 2 when a file is unreadable, malformed, a symlink, cites nothing, has `sources` without a commit as its pin, or the pin is not in the clone.
 - `--report` also shows `moved`, which does not fail (run `--fix`). For `ambiguous` and `weak anchor`, re-cite a longer or more distinctive line: `--fix` will not touch that file until you do.
 
